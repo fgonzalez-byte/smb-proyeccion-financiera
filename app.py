@@ -897,20 +897,7 @@ if st.session_state.get("_save_trigger"):
 df_monthly = generate_monthly_projection(params)
 
 
-# ── Encabezado y selector de periodicidad ─────────────────────────────────────
-
-hdr_col, per_col = st.columns([4, 1])
-with hdr_col:
-    st.markdown("# 📊 Proyección Financiera — Factoring")
-    st.markdown("Horizonte: **6 años (72 meses)** · Valores en millones de pesos (M$)")
-with per_col:
-    period = st.selectbox(
-        "Periodicidad tabla",
-        options=["Mensual", "Trimestral", "Semestral", "Anual"],
-        index=3,
-        key="period_sel",
-    )
-
+period = st.session_state.get("period_sel", "Anual")
 df_period = aggregate_by_period(df_monthly, period)
 
 # ── Header principal ─────────────────────────────────────────────────────────
@@ -1108,6 +1095,18 @@ with tab_dash:
 # ════════════════════════════════════════════════════════════════════════════════
 
 with tab_table:
+    per_col, _ = st.columns([2, 5])
+    with per_col:
+        period = st.selectbox(
+            "Periodicidad",
+            options=["Mensual", "Trimestral", "Semestral", "Anual"],
+            index=["Mensual", "Trimestral", "Semestral", "Anual"].index(
+                st.session_state.get("period_sel", "Anual")
+            ),
+            key="period_sel",
+        )
+    df_period = aggregate_by_period(df_monthly, period)
+
     st.subheader(f"Proyección {period}")
 
     # Columnas a mostrar según periodicidad
