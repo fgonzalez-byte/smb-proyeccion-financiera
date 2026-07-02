@@ -39,7 +39,7 @@ st.markdown("""
 .block-container {
     padding-left: 1.5rem !important;
     padding-right: 1.5rem !important;
-    padding-top: 1rem !important;
+    padding-top: 8.5rem !important;
     max-width: 100% !important;
 }
 
@@ -267,9 +267,6 @@ def _param_bar(p, df_m) -> str:
     font-weight: 700;
     white-space: nowrap;
     line-height: 1.35;
-}}
-.main .block-container {{
-    padding-top: 7rem !important;
 }}
 </style>
 <div class="smb-pbar" id="smb-pbar-fixed">{chips}</div>
