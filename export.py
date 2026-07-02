@@ -274,8 +274,16 @@ def export_to_pptx(df_monthly: pd.DataFrame, params: ProjectionParams,   # noqa:
     C_PURPLE  = RGBColor(0xA7, 0x8B, 0xFA)
     C_TEAL    = RGBColor(0x2D, 0xD4, 0xBF)
 
+    import os as _os
     W = Inches(13.33)
     H = Inches(7.5)
+
+    # Rutas de assets (logo y decorativo geométrico extraídos del PPTX de referencia)
+    _here      = _os.path.dirname(_os.path.abspath(__file__))
+    LOGO_PATH  = _os.path.join(_here, "assets", "logo_smb.png")
+    DECO_PATH  = _os.path.join(_here, "assets", "deco.png")
+    HAS_LOGO   = _os.path.exists(LOGO_PATH)
+    HAS_DECO   = _os.path.exists(DECO_PATH)
 
     prs = Presentation()
     prs.slide_width  = W
@@ -322,19 +330,22 @@ def export_to_pptx(df_monthly: pd.DataFrame, params: ProjectionParams,   # noqa:
         return tb
 
     def slide_header(slide, title, subtitle="", slide_num=""):
-        """Barra superior naranja + título."""
+        """Barra superior naranja + título + logo SMB."""
         rect(slide, 0, 0, W, Inches(0.07), C_ORANGE)
         rect(slide, 0, Inches(0.07), W, Inches(1.05), C_PANEL)
         # línea vertical naranja izquierda
         rect(slide, Inches(0.35), Inches(0.14), Inches(0.045), Inches(0.9), C_ORANGE)
-        txt(slide, title,    Inches(0.5), Inches(0.12), Inches(11.5), Inches(0.62),
+        # Logo en header (esquina superior derecha)
+        add_logo(slide, W - Inches(2.55), Inches(0.1), Inches(2.3), Inches(0.88))
+        # Título y subtítulo (ancho reducido para dar espacio al logo)
+        txt(slide, title, Inches(0.5), Inches(0.12), Inches(10.4), Inches(0.62),
             size=24, bold=True, color=C_WHITE)
         if subtitle:
-            txt(slide, subtitle, Inches(0.5), Inches(0.7), Inches(10), Inches(0.38),
+            txt(slide, subtitle, Inches(0.5), Inches(0.7), Inches(10.0), Inches(0.38),
                 size=10, color=C_GRAY)
         if slide_num:
-            txt(slide, slide_num, W - Inches(1.1), Inches(0.2), Inches(0.8), Inches(0.45),
-                size=22, bold=True, color=C_ORANGE, align=PP_ALIGN.RIGHT)
+            txt(slide, slide_num, W - Inches(2.7), Inches(0.18), Inches(0.8), Inches(0.45),
+                size=18, bold=True, color=C_ORANGE, align=PP_ALIGN.RIGHT)
         # footer
         rect(slide, 0, H - Inches(0.28), W, Inches(0.28), C_PANEL)
         rect(slide, 0, H - Inches(0.28), W, Inches(0.02), C_ORANGE)
@@ -377,6 +388,11 @@ def export_to_pptx(df_monthly: pd.DataFrame, params: ProjectionParams,   # noqa:
                 w - Inches(0.15), Inches(0.28), size=7, color=C_GRAY,
                 align=PP_ALIGN.CENTER, italic=True)
 
+    def add_logo(slide, l, t, w, h):
+        """Inserta logo SMB si el archivo existe."""
+        if HAS_LOGO:
+            slide.shapes.add_picture(LOGO_PATH, l, t, width=w, height=h)
+
     def style_chart(chart, bg_color=None):
         """Fondo transparente y quitar borde al área de plot."""
         try:
@@ -384,6 +400,19 @@ def export_to_pptx(df_monthly: pd.DataFrame, params: ProjectionParams,   # noqa:
             chart.plot_area.format.line.fill.background()
             chart.chart_area.format.fill.background()
             chart.chart_area.format.line.fill.background()
+        except Exception:
+            pass
+
+    def fix_invert_negative(chart):
+        """Evita que las barras negativas se inviertan a blanco."""
+        try:
+            for plot in chart.plots:
+                for ser in plot.series:
+                    sp = ser._element
+                    inv = sp.find(qn("c:invertIfNegative"))
+                    if inv is None:
+                        inv = etree.SubElement(sp, qn("c:invertIfNegative"))
+                    inv.set("val", "0")
         except Exception:
             pass
 
@@ -419,43 +448,43 @@ def export_to_pptx(df_monthly: pd.DataFrame, params: ProjectionParams,   # noqa:
     s1 = prs.slides.add_slide(blank)
     bg(s1, C_DARK)
 
-    # Banda diagonal decorativa (triángulo inferior derecho)
-    rect(s1, W * 0.6, H * 0.45, W * 0.45, H * 0.6, C_PANEL)
+    # Decorativo geométrico en la derecha (mismo que PPTX de referencia)
+    if HAS_DECO:
+        s1.shapes.add_picture(DECO_PATH, W - Inches(3.8), 0, width=Inches(3.8), height=H)
 
     # Barras naranja izquierda
     rect(s1, 0, 0, Inches(0.55), H, C_ORANGE)
     rect(s1, Inches(0.55), 0, Inches(0.12), H, C_ORANGE2)
 
-    # Bloque de texto
-    txt(s1, "SMB SERVICIOS FINANCIEROS S.A.",
-        Inches(0.9), Inches(1.0), Inches(10.5), Inches(0.55),
-        size=13, bold=True, color=C_ORANGE)
-    # Línea divisoria naranja
-    rect(s1, Inches(0.9), Inches(1.58), Inches(8.5), Inches(0.03), C_ORANGE)
+    # Logo SMB prominente en la portada
+    add_logo(s1, Inches(0.85), Inches(0.45), Inches(3.8), Inches(1.45))
+
+    # Línea divisoria naranja bajo el logo
+    rect(s1, Inches(0.85), Inches(2.05), Inches(8.8), Inches(0.035), C_ORANGE)
 
     title = scenario_name or "Proyección Financiera"
     txt(s1, title,
-        Inches(0.9), Inches(1.65), Inches(11.2), Inches(1.8),
-        size=42, bold=True, color=C_WHITE)
+        Inches(0.85), Inches(2.15), Inches(9.0), Inches(1.75),
+        size=40, bold=True, color=C_WHITE)
 
     txt(s1, "Factoring  +  Leasing  |  Horizonte 6 años (72 meses)",
-        Inches(0.9), Inches(3.45), Inches(10), Inches(0.5),
+        Inches(0.85), Inches(3.95), Inches(9.0), Inches(0.5),
         size=14, color=C_LGRAY)
     txt(s1, "Valores expresados en millones de pesos chilenos (M$)",
-        Inches(0.9), Inches(3.95), Inches(10), Inches(0.4),
+        Inches(0.85), Inches(4.48), Inches(9.0), Inches(0.4),
         size=11, color=C_GRAY, italic=True)
 
-    # Caja info derecha
-    rect(s1, Inches(9.8), Inches(5.2), Inches(3.0), Inches(1.6), C_PANEL, radius=True)
-    txt(s1, "FECHA DE GENERACIÓN", Inches(9.95), Inches(5.35), Inches(2.7), Inches(0.35),
+    # Caja info fecha
+    rect(s1, Inches(0.85), Inches(5.4), Inches(3.8), Inches(1.55), C_PANEL, radius=True)
+    txt(s1, "FECHA DE GENERACIÓN", Inches(1.0), Inches(5.55), Inches(3.4), Inches(0.35),
         size=7, color=C_GRAY, align=PP_ALIGN.CENTER)
-    txt(s1, ts, Inches(9.95), Inches(5.68), Inches(2.7), Inches(0.55),
-        size=18, bold=True, color=C_ORANGE, align=PP_ALIGN.CENTER)
-    txt(s1, "Proyección calibrada con EERR Mayo 2026",
-        Inches(9.95), Inches(6.22), Inches(2.7), Inches(0.45),
+    txt(s1, ts, Inches(1.0), Inches(5.88), Inches(3.4), Inches(0.55),
+        size=20, bold=True, color=C_ORANGE, align=PP_ALIGN.CENTER)
+    txt(s1, "Calibrada con EERR Mayo 2026",
+        Inches(1.0), Inches(6.42), Inches(3.4), Inches(0.4),
         size=8, color=C_GRAY, align=PP_ALIGN.CENTER, italic=True)
 
-    # Footer
+    # Footer portada
     rect(s1, 0, H - Inches(0.35), W, Inches(0.35), RGBColor(0x06, 0x0E, 0x1A))
     txt(s1, footer_txt, Inches(0.7), H - Inches(0.33), Inches(12), Inches(0.33),
         size=7, color=C_GRAY)
@@ -764,6 +793,7 @@ def export_to_pptx(df_monthly: pd.DataFrame, params: ProjectionParams,   # noqa:
     style_chart(chart5)
     chart5.plots[0].series[0].format.fill.solid()
     chart5.plots[0].series[0].format.fill.fore_color.rgb = C_ORANGE
+    fix_invert_negative(chart5)
     add_data_labels(chart5, font_size=9)
 
     # Breakeven line (zero)
@@ -821,6 +851,7 @@ def export_to_pptx(df_monthly: pd.DataFrame, params: ProjectionParams,   # noqa:
     chart6.plots[0].series[0].format.fill.fore_color.rgb = C_ORANGE
     chart6.plots[0].series[1].format.fill.solid()
     chart6.plots[0].series[1].format.fill.fore_color.rgb = C_PURPLE
+    fix_invert_negative(chart6)
     try:
         chart6.legend.font.size = Pt(9)
         chart6.legend.font.color.rgb = C_LGRAY
