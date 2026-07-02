@@ -335,17 +335,29 @@ def export_to_pptx(df_monthly: pd.DataFrame, params: ProjectionParams,   # noqa:
         rect(slide, 0, Inches(0.07), W, Inches(1.05), C_PANEL)
         # línea vertical naranja izquierda
         rect(slide, Inches(0.35), Inches(0.14), Inches(0.045), Inches(0.9), C_ORANGE)
-        # Logo en header (esquina superior derecha)
-        add_logo(slide, W - Inches(2.55), Inches(0.1), Inches(2.3), Inches(0.88))
-        # Título y subtítulo (ancho reducido para dar espacio al logo)
-        txt(slide, title, Inches(0.5), Inches(0.12), Inches(10.4), Inches(0.62),
+        # Logo en header: fondo blanco redondeado + imagen con ratio correcto
+        LOGO_W = Inches(2.15)
+        LOGO_PAD_H = Inches(0.12)
+        LOGO_PAD_V = Inches(0.1)
+        logo_l = W - LOGO_W - Inches(0.18)
+        logo_t = Inches(0.1)
+        logo_box_h = Inches(0.9)
+        _s = slide.shapes.add_shape(5, logo_l - LOGO_PAD_H, logo_t,
+                                    LOGO_W + LOGO_PAD_H * 2, logo_box_h)
+        _s.fill.solid(); _s.fill.fore_color.rgb = C_WHITE
+        _s.line.fill.background()
+        _s.adjustments[0] = 0.08
+        add_logo(slide, logo_l, logo_t + LOGO_PAD_V, LOGO_W)
+        # Número de slide (izq. del logo)
+        if slide_num:
+            txt(slide, slide_num, logo_l - Inches(0.85), Inches(0.2), Inches(0.65), Inches(0.45),
+                size=18, bold=True, color=C_ORANGE, align=PP_ALIGN.RIGHT)
+        # Título y subtítulo
+        txt(slide, title, Inches(0.5), Inches(0.12), logo_l - Inches(1.0), Inches(0.62),
             size=24, bold=True, color=C_WHITE)
         if subtitle:
-            txt(slide, subtitle, Inches(0.5), Inches(0.7), Inches(10.0), Inches(0.38),
+            txt(slide, subtitle, Inches(0.5), Inches(0.7), logo_l - Inches(1.0), Inches(0.38),
                 size=10, color=C_GRAY)
-        if slide_num:
-            txt(slide, slide_num, W - Inches(2.7), Inches(0.18), Inches(0.8), Inches(0.45),
-                size=18, bold=True, color=C_ORANGE, align=PP_ALIGN.RIGHT)
         # footer
         rect(slide, 0, H - Inches(0.28), W, Inches(0.28), C_PANEL)
         rect(slide, 0, H - Inches(0.28), W, Inches(0.02), C_ORANGE)
@@ -388,10 +400,10 @@ def export_to_pptx(df_monthly: pd.DataFrame, params: ProjectionParams,   # noqa:
                 w - Inches(0.15), Inches(0.28), size=7, color=C_GRAY,
                 align=PP_ALIGN.CENTER, italic=True)
 
-    def add_logo(slide, l, t, w, h):
-        """Inserta logo SMB si el archivo existe."""
+    def add_logo(slide, l, t, w):
+        """Inserta logo SMB preservando aspect ratio (solo ancho controlado)."""
         if HAS_LOGO:
-            slide.shapes.add_picture(LOGO_PATH, l, t, width=w, height=h)
+            slide.shapes.add_picture(LOGO_PATH, l, t, width=w)
 
     def style_chart(chart, bg_color=None):
         """Fondo transparente y quitar borde al área de plot."""
@@ -404,15 +416,27 @@ def export_to_pptx(df_monthly: pd.DataFrame, params: ProjectionParams,   # noqa:
             pass
 
     def fix_invert_negative(chart):
-        """Evita que las barras negativas se inviertan a blanco."""
+        """Desactiva la inversión de color en barras negativas (val=0).
+
+        El elemento <c:invertIfNegative> debe ir DESPUÉS de <c:spPr> en el
+        schema OOXML — etree.SubElement lo pone al final lo que PowerPoint ignora.
+        Usamos insert() en la posición correcta.
+        """
         try:
             for plot in chart.plots:
                 for ser in plot.series:
                     sp = ser._element
-                    inv = sp.find(qn("c:invertIfNegative"))
-                    if inv is None:
-                        inv = etree.SubElement(sp, qn("c:invertIfNegative"))
+                    # Quitar si ya existe (posición incorrecta)
+                    existing = sp.find(qn("c:invertIfNegative"))
+                    if existing is not None:
+                        sp.remove(existing)
+                    # Insertar justo después de c:spPr
+                    children = list(sp)
+                    spPr_el = sp.find(qn("c:spPr"))
+                    pos = (children.index(spPr_el) + 1) if spPr_el is not None else len(children)
+                    inv = etree.Element(qn("c:invertIfNegative"))
                     inv.set("val", "0")
+                    sp.insert(pos, inv)
         except Exception:
             pass
 
@@ -456,22 +480,28 @@ def export_to_pptx(df_monthly: pd.DataFrame, params: ProjectionParams,   # noqa:
     rect(s1, 0, 0, Inches(0.55), H, C_ORANGE)
     rect(s1, Inches(0.55), 0, Inches(0.12), H, C_ORANGE2)
 
-    # Logo SMB prominente en la portada
-    add_logo(s1, Inches(0.85), Inches(0.45), Inches(3.8), Inches(1.45))
+    # Logo SMB en portada: caja blanca + imagen con ratio correcto
+    _LPAD = Inches(0.15)
+    _LBOX_W = Inches(4.1)
+    _LBOX_H = Inches(1.5)
+    _s_logo = s1.shapes.add_shape(5, Inches(0.85), Inches(0.45), _LBOX_W, _LBOX_H)
+    _s_logo.fill.solid(); _s_logo.fill.fore_color.rgb = C_WHITE
+    _s_logo.line.fill.background(); _s_logo.adjustments[0] = 0.06
+    add_logo(s1, Inches(0.85) + _LPAD, Inches(0.45) + _LPAD, _LBOX_W - _LPAD * 2)
 
-    # Línea divisoria naranja bajo el logo
-    rect(s1, Inches(0.85), Inches(2.05), Inches(8.8), Inches(0.035), C_ORANGE)
+    # Línea divisoria naranja bajo el logo (logo termina en 0.45+1.5=1.95")
+    rect(s1, Inches(0.85), Inches(2.08), Inches(8.8), Inches(0.035), C_ORANGE)
 
     title = scenario_name or "Proyección Financiera"
     txt(s1, title,
-        Inches(0.85), Inches(2.15), Inches(9.0), Inches(1.75),
+        Inches(0.85), Inches(2.2), Inches(9.0), Inches(1.7),
         size=40, bold=True, color=C_WHITE)
 
     txt(s1, "Factoring  +  Leasing  |  Horizonte 6 años (72 meses)",
-        Inches(0.85), Inches(3.95), Inches(9.0), Inches(0.5),
+        Inches(0.85), Inches(3.98), Inches(9.0), Inches(0.5),
         size=14, color=C_LGRAY)
     txt(s1, "Valores expresados en millones de pesos chilenos (M$)",
-        Inches(0.85), Inches(4.48), Inches(9.0), Inches(0.4),
+        Inches(0.85), Inches(4.52), Inches(9.0), Inches(0.4),
         size=11, color=C_GRAY, italic=True)
 
     # Caja info fecha
