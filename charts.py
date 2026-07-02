@@ -23,12 +23,20 @@ C = {
     "text":         "#A8A8A8",
 }
 
+_LEGEND = dict(
+    bgcolor="rgba(0,0,0,0)",
+    font=dict(size=10, color=C["text"]),
+    orientation="h",
+    yanchor="bottom", y=1.02,
+    xanchor="left",   x=0.0,
+)
+
 LAYOUT = dict(
     paper_bgcolor="rgba(0,0,0,0)",
     plot_bgcolor=C["bg"],
     font=dict(color=C["text"], size=11),
-    margin=dict(l=45, r=20, t=48, b=40),
-    legend=dict(bgcolor="rgba(0,0,0,0)", font=dict(size=10), orientation="h", yanchor="bottom", y=1.02),
+    margin=dict(l=45, r=20, t=40, b=40),
+    legend=_LEGEND,
     xaxis=dict(gridcolor=C["grid"], showgrid=True, zeroline=False),
     yaxis=dict(gridcolor=C["grid"], showgrid=True, zeroline=False),
     hovermode="x unified",
@@ -92,7 +100,7 @@ def plot_portfolio_evolution(df: pd.DataFrame) -> go.Figure:
 
     _add_year_markers(fig)
     fig.update_layout(
-        title="Evolución de Cartera — Factoring + Leasing",
+        title=dict(text=""),
         xaxis_title="Mes", yaxis_title="M$", **LAYOUT,
     )
     return fig
@@ -131,7 +139,9 @@ def plot_income_vs_costs(df: pd.DataFrame) -> go.Figure:
             ))
 
     _add_year_markers(fig)
-    fig.update_layout(title="Ingresos vs Costos (Consolidado)", xaxis_title="Mes", yaxis_title="M$", **LAYOUT)
+    fig.update_layout(
+        title=dict(text=""), xaxis_title="Mes", yaxis_title="M$", **LAYOUT,
+    )
     return fig
 
 
@@ -153,7 +163,7 @@ def plot_net_result(df: pd.DataFrame) -> go.Figure:
 
     _add_year_markers(fig)
     fig.update_layout(
-        title="Resultado Neto Mensual", xaxis_title="Mes", yaxis_title="M$",
+        title=dict(text=""), xaxis_title="Mes", yaxis_title="M$",
         showlegend=False, **LAYOUT,
     )
     return fig
@@ -180,13 +190,13 @@ def plot_margin_trend(df: pd.DataFrame) -> go.Figure:
         fig.add_vline(x=yr * 12, line_dash="dot", line_color=C["grid"])
 
     fig.update_layout(
-        title="Margen Neto y Eficiencia Operativa",
+        title=dict(text=""),
         xaxis=dict(title="Mes", gridcolor=C["grid"]),
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor=C["bg"],
         font=dict(color=C["text"], size=11),
-        margin=dict(l=45, r=45, t=48, b=40),
-        legend=dict(bgcolor="rgba(0,0,0,0)", orientation="h", yanchor="bottom", y=1.02),
+        margin=dict(l=45, r=45, t=40, b=40),
+        legend=_LEGEND,
         hovermode="x unified",
     )
     fig.update_yaxes(title_text="Margen Neto (%)", secondary_y=False, gridcolor=C["grid"])
@@ -225,7 +235,7 @@ def plot_cost_breakdown(df: pd.DataFrame) -> go.Figure:
 
     _add_year_markers(fig)
     fig.update_layout(
-        title="Composición de Costos vs Margen Financiero",
+        title=dict(text=""),
         xaxis_title="Mes", yaxis_title="M$", **LAYOUT,
     )
     return fig
@@ -254,7 +264,7 @@ def plot_waterfall_annual(df_annual: pd.DataFrame) -> go.Figure:
     ))
 
     fig.update_layout(
-        title="Resultado Neto por Año (Waterfall)",
+        title=dict(text=""),
         yaxis_title="M$", **LAYOUT,
     )
     return fig
@@ -290,13 +300,13 @@ def plot_comparison(df1: pd.DataFrame, df2: pd.DataFrame, name1: str, name2: str
             ), row=row, col=col)
 
     fig.update_layout(
-        title=f"Comparación de Escenarios: {name1} vs {name2}",
-        height=550,
+        title=dict(text=""),
+        height=640,
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor=C["bg"],
         font=dict(color=C["text"], size=11),
-        margin=dict(l=45, r=20, t=80, b=40),
-        legend=dict(bgcolor="rgba(0,0,0,0)", orientation="h", y=1.05),
+        margin=dict(l=45, r=20, t=40, b=40),
+        legend=_LEGEND,
         hovermode="x unified",
     )
     for axis in fig.layout:

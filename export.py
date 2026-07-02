@@ -45,7 +45,7 @@ FMT_INT  = '0'
 FMT_NONE = '#,##0.0'
 
 COL_FORMATS = {
-    "Mes": FMT_INT, "Año": FMT_INT, "Mes_en_año": FMT_INT, "Ejecutivos_adicionales": FMT_INT,
+    "Mes": FMT_INT, "Año": FMT_INT, "Mes_en_año": FMT_INT,
     "Tasa_colocacion_pct": FMT_PCT, "Costo_fondo_pct": FMT_PCT,
     "Margen_neto_pct": FMT_PCT, "Eficiencia_pct": FMT_PCT, "ROA_pct": FMT_PCT,
 }
@@ -59,7 +59,7 @@ COL_NAMES_ES = {
     "Remuneraciones": "Rem. (M$)", "Otros_gastos": "Otros (M$)",
     "Total_costos": "Total Costos (M$)", "Resultado_neto": "Resultado Neto (M$)",
     "Margen_neto_pct": "Margen Neto (%)", "Eficiencia_pct": "Eficiencia (%)",
-    "ROA_pct": "ROA (%)", "Ejecutivos_adicionales": "Ejecutivos +",
+    "ROA_pct": "ROA (%)",
 }
 
 
@@ -153,8 +153,6 @@ def export_to_excel(df_monthly: pd.DataFrame, params: ProjectionParams) -> bytes
         ("Costo de Fondo (mensual)",     f"{params.funding_cost_rate:.2f}%"),
         ("Costos Operacionales Base",    f"${params.current_op_costs:,.1f}M/mes"),
         ("Remuneraciones Base",          f"${params.current_remuneration:,.1f}M/mes"),
-        ("Sueldo Nuevo Ejecutivo",       f"${params.new_executive_salary:,.1f}M/mes"),
-        ("Contratación Ejecutivo Cada",  f"{params.executive_hire_every_n_years} años"),
         ("Incremento Anual Op.",         f"${params.annual_op_increment:,.1f}M/año"),
         ("Otros Gastos",                 f"${params.other_expenses:,.1f}M/mes"),
     ]
@@ -189,7 +187,6 @@ def export_to_excel(df_monthly: pd.DataFrame, params: ProjectionParams) -> bytes
         ("Margen Neto Promedio",           f"{avg_margin:.1f}%"),
         ("ROA Final (Mes 72)",             f"{last['ROA_pct']:.2f}%"),
         ("Eficiencia Final (Mes 72)",      f"{last['Eficiencia_pct']:.1f}%"),
-        ("Ejecutivos Adicionales (Año 6)", f"{int(last['Ejecutivos_adicionales'])}"),
     ]
     for i, (label, value) in enumerate(kpi_rows, start=kpi_start + 1):
         ws_sum[f"B{i}"] = label
@@ -223,7 +220,7 @@ def export_to_excel(df_monthly: pd.DataFrame, params: ProjectionParams) -> bytes
     monthly_cols = ["Mes", "Año", "Cartera", "Ingresos_factoring", "Costo_fondo",
                     "Margen_financiero", "Costos_operacionales", "Remuneraciones",
                     "Otros_gastos", "Total_costos", "Resultado_neto",
-                    "Margen_neto_pct", "Eficiencia_pct", "ROA_pct", "Ejecutivos_adicionales"]
+                    "Margen_neto_pct", "Eficiencia_pct", "ROA_pct"]
 
     period_cols = ["Periodo", "Cartera", "Ingresos_factoring", "Costo_fondo",
                    "Margen_financiero", "Costos_operacionales", "Remuneraciones",

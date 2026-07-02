@@ -35,7 +35,15 @@ st.markdown("""
 /* ── Fondo global ───────────────────────────────────────────────────────── */
 .stApp { background-color: #1C1C1C; }
 
-/* ── Sidebar ────────────────────────────────────────────────────────────── */
+/* ── Márgenes del contenido principal ──────────────────────────────────── */
+.block-container {
+    padding-left: 1.5rem !important;
+    padding-right: 1.5rem !important;
+    padding-top: 1rem !important;
+    max-width: 100% !important;
+}
+
+/* ── Sidebar más compacto ───────────────────────────────────────────────── */
 section[data-testid="stSidebar"] > div:first-child {
     background: #242424;
     border-right: 2px solid #F47920;
@@ -122,6 +130,21 @@ div[data-testid="stDataFrame"] { border-radius: 8px; overflow: hidden; }
 /* ── Textos generales ───────────────────────────────────────────────────── */
 h1, h2, h3 { color: #F47920 !important; }
 p, li, span { color: #D0D0D0; }
+
+/* ── Cabeceras de tabla en dos líneas ───────────────────────────────────── */
+[role="columnheader"] > div {
+    white-space: normal !important;
+    word-break: break-word !important;
+    line-height: 1.25 !important;
+    text-align: center !important;
+    overflow: visible !important;
+    height: auto !important;
+    padding: 4px 6px !important;
+}
+[role="columnheader"] {
+    height: auto !important;
+    min-height: 44px !important;
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -902,11 +925,12 @@ st.markdown(_param_bar(params, df_monthly), unsafe_allow_html=True)
 
 # ── Tabs principales ──────────────────────────────────────────────────────────
 
-tab_dash, tab_table, tab_charts, tab_scenarios = st.tabs([
+tab_dash, tab_table, tab_charts, tab_scenarios, tab_metodo = st.tabs([
     "🎯  Dashboard KPIs",
     "📋  Tabla de Proyecciones",
     "📈  Gráficos Detallados",
     "💾  Escenarios",
+    "📖  Metodología",
 ])
 
 
@@ -969,7 +993,8 @@ with tab_dash:
     st.subheader("Resumen Anual")
 
     df_annual = aggregate_by_period(df_monthly, "Anual")
-    display_cols = ["Periodo", "Cartera", "Ingresos_factoring", "Margen_financiero",
+    display_cols = ["Periodo", "Cartera", "Ingresos_factoring", "Ingresos_leasing",
+                    "Ingresos_total", "Margen_financiero",
                     "Provision_expense", "Total_costos", "EBIT", "Impuesto",
                     "Resultado_neto", "Patrimonio", "Margen_neto_pct", "ROA_pct",
                     "ROE_pct", "Eficiencia_pct"]
@@ -978,7 +1003,8 @@ with tab_dash:
     rename_map = {
         "Periodo": "Período", "Mes": "Mes", "Año": "Año",
         "Cartera": "Cartera (M$)", "Cartera_total": "Cartera Total (M$)",
-        "Ingresos_factoring": "Ingresos (M$)", "Ingresos_total": "Ing. Total (M$)",
+        "Ingresos_factoring": "Ing. Factoring (M$)", "Ingresos_leasing": "Ing. Leasing (M$)",
+        "Ingresos_total": "Ing. Total (M$)",
         "Costo_fondo": "Costo Fondo (M$)",
         "Margen_financiero": "Margen Fin. (M$)", "Margen_financiero_neto": "Margen Neto Fin. (M$)",
         "Provision_expense": "Provisiones (M$)",
@@ -995,7 +1021,39 @@ with tab_dash:
 
     df_ann_disp = df_annual[display_cols].rename(columns=rename_map)
 
-    # Función de formateo inline
+    # ── Render HTML con headers en dos líneas ───────────────────────────────
+    def _html_table(df_in: pd.DataFrame) -> str:
+        TH = ("padding:5px 4px;text-align:center;color:#fff;white-space:normal;"
+              "word-break:break-word;max-width:90px;min-width:52px;"
+              "border-bottom:2px solid #F47920;font-size:0.74rem;line-height:1.2;")
+        heads = "".join(f'<th style="{TH}">{c}</th>' for c in df_in.columns)
+        rows_html = ""
+        for i, (_, row) in enumerate(df_in.iterrows()):
+            bg = "#1e293b" if i % 2 == 0 else "#0f172a"
+            cells = ""
+            for col, val in row.items():
+                if isinstance(val, (int, float)):
+                    if "(%)" in col or col in ("ROA (%)", "ROE (%)", "Eficiencia (%)"):
+                        txt = f"{val:.1f}%"
+                    elif col in ("Mes", "Año"):
+                        txt = str(int(val))
+                    else:
+                        txt = f"${val:,.1f}"
+                else:
+                    txt = str(val) if val is not None else "—"
+                clr = "#e2e8f0"
+                if "Resultado Neto" in col and isinstance(val, (int, float)):
+                    clr = "#4ADE80" if val >= 0 else "#F87171"
+                al = "left" if col in ("Período", "Mes", "Año") else "right"
+                cells += (f'<td style="padding:3px 5px;text-align:{al};'
+                          f'color:{clr};font-size:0.77rem;">{txt}</td>')
+            rows_html += f'<tr style="background:{bg};">{cells}</tr>'
+        return (f'<div style="overflow-x:auto;border-radius:8px;margin-top:4px;">'
+                f'<table style="width:100%;border-collapse:collapse;">'
+                f'<thead><tr style="background:#0F2037;">{heads}</tr></thead>'
+                f'<tbody>{rows_html}</tbody></table></div>')
+
+    # Función de formateo inline (para uso interno)
     def _fmt(df_in: pd.DataFrame):
         fmt_dict = {}
         for col in df_in.columns:
@@ -1019,17 +1077,20 @@ with tab_dash:
             styled = styled.map(_color_net, subset=net_col)
         return styled.set_properties(**{"background-color": "#0a1628", "color": "#e2e8f0"})
 
-    st.dataframe(_fmt(df_ann_disp), use_container_width=True, hide_index=True)
+    st.markdown(_html_table(df_ann_disp), unsafe_allow_html=True)
 
     # Gráficos rápidos en dashboard
     st.markdown("---")
     ch1, ch2 = st.columns(2)
     with ch1:
+        st.markdown("**Evolución de Cartera — Factoring + Leasing**")
         st.plotly_chart(plot_portfolio_evolution(df_monthly), use_container_width=True, key="dash_portfolio")
     with ch2:
+        st.markdown("**Resultado Neto Mensual**")
         st.plotly_chart(plot_net_result(df_monthly), use_container_width=True, key="dash_net")
 
     # Waterfall anual
+    st.markdown("**Resultado Neto por Año (Waterfall)**")
     st.plotly_chart(plot_waterfall_annual(df_annual), use_container_width=True, key="dash_wf")
 
 
@@ -1042,14 +1103,16 @@ with tab_table:
 
     # Columnas a mostrar según periodicidad
     if period == "Mensual":
-        show_cols = ["Mes", "Año", "Cartera", "Ingresos_factoring", "Costo_fondo",
+        show_cols = ["Mes", "Año", "Cartera", "Ingresos_factoring", "Ingresos_leasing",
+                     "Ingresos_total", "Costo_fondo",
                      "Margen_financiero", "Provision_expense", "Costos_operacionales",
                      "Remuneraciones", "Otros_gastos", "Total_costos",
                      "EBIT", "Diferencia_cambio", "Resultado_antes_imp",
                      "Impuesto", "Resultado_neto", "Patrimonio",
                      "Margen_neto_pct", "ROE_pct", "Eficiencia_pct", "ROA_pct"]
     else:
-        show_cols = ["Periodo", "Cartera", "Ingresos_factoring", "Costo_fondo",
+        show_cols = ["Periodo", "Cartera", "Ingresos_factoring", "Ingresos_leasing",
+                     "Ingresos_total", "Costo_fondo",
                      "Margen_financiero", "Provision_expense", "Costos_operacionales",
                      "Remuneraciones", "Otros_gastos", "Total_costos",
                      "EBIT", "Diferencia_cambio", "Resultado_antes_imp",
@@ -1066,10 +1129,7 @@ with tab_table:
         if sel_cols:
             df_tbl = df_tbl[sel_cols]
 
-    st.dataframe(
-        _fmt(df_tbl) if len(df_tbl.columns) > 0 else df_tbl,
-        use_container_width=True, hide_index=True, height=520,
-    )
+    st.markdown(_html_table(df_tbl) if len(df_tbl.columns) > 0 else "", unsafe_allow_html=True)
 
     st.markdown("---")
     exp_col, info_col = st.columns([2, 3])
@@ -1111,25 +1171,31 @@ with tab_charts:
     )
 
     if "Evolución de Cartera" in selected_charts:
+        st.markdown("**Evolución de Cartera — Factoring + Leasing**")
         st.plotly_chart(plot_portfolio_evolution(df_monthly), use_container_width=True, key="ch_port")
 
     if "Ingresos vs Costos" in selected_charts or "Resultado Neto Mensual" in selected_charts:
         ch_col1, ch_col2 = st.columns(2)
         if "Ingresos vs Costos" in selected_charts:
             with ch_col1:
+                st.markdown("**Ingresos vs Costos (Consolidado)**")
                 st.plotly_chart(plot_income_vs_costs(df_monthly), use_container_width=True, key="ch_inc")
         if "Resultado Neto Mensual" in selected_charts:
             with ch_col2:
+                st.markdown("**Resultado Neto Mensual**")
                 st.plotly_chart(plot_net_result(df_monthly), use_container_width=True, key="ch_net")
 
     if "Margen y Eficiencia" in selected_charts:
+        st.markdown("**Margen Neto y Eficiencia Operativa**")
         st.plotly_chart(plot_margin_trend(df_monthly), use_container_width=True, key="ch_marg")
 
     if "Composición de Costos" in selected_charts:
+        st.markdown("**Composición de Costos vs Margen Financiero**")
         st.plotly_chart(plot_cost_breakdown(df_monthly), use_container_width=True, key="ch_cost")
 
     if "Waterfall Anual" in selected_charts:
         df_annual_ch = aggregate_by_period(df_monthly, "Anual")
+        st.markdown("**Resultado Neto por Año (Waterfall)**")
         st.plotly_chart(plot_waterfall_annual(df_annual_ch), use_container_width=True, key="ch_wf")
 
 
@@ -1203,6 +1269,7 @@ with tab_scenarios:
             if loaded_comp:
                 df_comp = generate_monthly_projection(loaded_comp)
                 fig_comp = plot_comparison(df_monthly, df_comp, "Escenario Actual", comp_sc)
+                st.markdown(f"**Comparación: Escenario Actual vs {comp_sc}**")
                 st.plotly_chart(fig_comp, use_container_width=True, key="ch_comp")
 
                 # Diferencias clave
@@ -1216,3 +1283,86 @@ with tab_scenarios:
                 st.dataframe(pd.DataFrame(diff_data).T, use_container_width=True)
             else:
                 st.error(f"No se pudo cargar el escenario '{comp_sc}'.")
+
+
+# ════════════════════════════════════════════════════════════════════════════════
+# TAB 5 — METODOLOGÍA DE CÁLCULO
+# ════════════════════════════════════════════════════════════════════════════════
+
+with tab_metodo:
+    st.subheader("Metodología de Cálculo")
+    st.caption("Descripción de cada línea del modelo y cómo se obtiene el valor.")
+
+    # Calcula valores reales del mes 1 para mostrar como ejemplo
+    _m1  = df_monthly.iloc[0]
+    _p   = params
+    _r   = _p.leasing_annual_rate / 12 / 100
+    _n   = _p.leasing_avg_term_months
+    _cuota_u = _r / (1 - (1+_r)**(-_n)) if _r > 0 else 1/_n
+    _total_int_pct = (_cuota_u * _n - 1) * 100
+    _sl_rate = _total_int_pct / _n
+
+    def _bloque(titulo, filas):
+        st.markdown(f"### {titulo}")
+        html = '<table style="width:100%;border-collapse:collapse;font-size:0.85rem;">'
+        html += '<tr style="background:#2E2E2E;"><th style="padding:6px 10px;text-align:left;color:#F47920;">Concepto</th><th style="padding:6px 10px;text-align:left;color:#F47920;">Fórmula</th><th style="padding:6px 10px;text-align:right;color:#F47920;">Ejemplo Mes 1</th></tr>'
+        for i, (concepto, formula, ejemplo) in enumerate(filas):
+            bg = "#1e293b" if i % 2 == 0 else "#0f172a"
+            html += f'<tr style="background:{bg};"><td style="padding:5px 10px;color:#e2e8f0;">{concepto}</td><td style="padding:5px 10px;color:#94a3b8;font-family:monospace;">{formula}</td><td style="padding:5px 10px;text-align:right;color:#F47920;font-weight:700;">{ejemplo}</td></tr>'
+        html += "</table>"
+        st.markdown(html, unsafe_allow_html=True)
+        st.markdown("")
+
+    _bloque("1. Cartera", [
+        ("Cartera factoring", "Cartera(t-1) + crecimiento mensual", f"M${_m1['Cartera']:,.1f}"),
+        ("Crecimiento mensual", "Crecimiento anual ÷ 12  (o tramo definido)", f"M${_m1['Crecimiento_mensual']:,.1f}"),
+        ("Cartera leasing (CLP)", "UF vigentes × valor UF del mes", f"M${_m1['Cartera_leasing']:,.1f}"),
+        ("Reajuste UF", "Cartera leasing × IPC mensual", f"M${_m1['Reajuste_leasing']:,.1f}"),
+        ("Cartera total", "Cartera factoring + Cartera leasing", f"M${_m1['Cartera_total']:,.1f}"),
+    ])
+
+    _bloque("2. Ingresos operacionales", [
+        ("Ingresos factoring", "Cartera factoring × tasa colocación mensual", f"M${_m1['Ingresos_factoring']:,.1f}"),
+        ("Tasa colocación", "Tasa ponderada calculada del EERR (intereses + comisiones ÷ cartera)", f"{_p.placement_rate:.2f}%/mes"),
+        ("Ingresos leasing (interés)", f"Cartera leasing × tasa lineal ({_sl_rate:.3f}%/mes)", f"M${_m1['Ingresos_leasing']:,.1f}"),
+        ("Tasa lineal leasing", f"Total interés {_total_int_pct:.1f}% ÷ {_n} meses  (a partir de tasa {_p.leasing_annual_rate}% anual)", f"{_sl_rate:.4f}%/mes"),
+        ("Total ingresos operacionales", "Ing. factoring + Ing. leasing", f"M${_m1['Ingresos_total']:,.1f}"),
+    ])
+
+    _bloque("3. Margen financiero", [
+        ("Costo de fondo", "Cartera total × tasa costo fondo mensual", f"M${_m1['Costo_fondo']:,.1f}"),
+        ("Tasa costo fondo", "Extraída del EERR (costo financiamiento ÷ cartera)", f"{_p.funding_cost_rate:.2f}%/mes"),
+        ("Margen financiero bruto", "Ingresos operacionales − Costo de fondo", f"M${_m1['Margen_financiero']:,.1f}"),
+        ("Provisiones", f"Cartera total × {_p.provision_rate:.1f}% anual ÷ 12", f"M${_m1['Provision_expense']:,.1f}"),
+        ("Margen financiero neto", "Margen bruto − Provisiones", f"M${_m1['Margen_financiero_neto']:,.1f}"),
+    ])
+
+    _bloque("4. Costos operacionales", [
+        ("Remuneraciones", "Base EERR + ajustes manuales de personal", f"M${_m1['Remuneraciones']:,.1f}"),
+        ("Costos operacionales", "Base EERR + incremento anual acumulado", f"M${_m1['Costos_operacionales']:,.1f}"),
+        ("Otros gastos", "Otros no operacionales EERR + ajustes manuales", f"M${_m1['Otros_gastos']:,.1f}"),
+        ("Total costos", "Remuneraciones + Costos op. + Otros gastos", f"M${_m1['Total_costos']:,.1f}"),
+    ])
+
+    _bloque("5. Resultado (cascada P&L)", [
+        ("EBIT", "Margen financiero neto − Total costos", f"M${_m1['EBIT']:,.1f}"),
+        ("Diferencia de cambio", "Reajuste UF (línea 135 EERR) — no operacional", f"M${_m1['Diferencia_cambio']:,.1f}"),
+        ("Resultado antes impuesto", "EBIT + Diferencia de cambio", f"M${_m1['Resultado_antes_imp']:,.1f}"),
+        ("Impuesto renta", f"Resultado antes impuesto × {_p.tax_rate:.0f}% (solo si positivo)", f"M${_m1['Impuesto']:,.1f}"),
+        ("Resultado neto", "Resultado antes impuesto − Impuesto", f"M${_m1['Resultado_neto']:,.1f}"),
+        ("Patrimonio", "Patrimonio(t-1) + Resultado neto del mes", f"M${_m1['Patrimonio']:,.1f}"),
+    ])
+
+    _bloque("6. KPIs", [
+        ("Margen neto (%)", "Resultado neto ÷ (Ing. operac. + Dif. cambio) × 100", f"{_m1['Margen_neto_pct']:.1f}%"),
+        ("Eficiencia (%)", "Total costos ÷ Margen financiero bruto × 100  (menor = mejor)", f"{_m1['Eficiencia_pct']:.1f}%"),
+        ("ROA anualizado", "Resultado neto × 12 ÷ Cartera total × 100", f"{_m1['ROA_pct']:.2f}%"),
+        ("ROE anualizado", "Resultado neto × 12 ÷ Patrimonio inicio mes × 100", f"{_m1['ROE_pct']:.1f}%"),
+    ])
+
+    st.info(
+        "**Fuentes de datos base:** EERR IFRS SMB Mayo 2026 · "
+        "Cartera factoring: M$5.018 al 31/05/2026 · "
+        "Remuneraciones, costos op. y otros: promedio 5 meses (ene–may 2026) · "
+        "Parámetros de leasing ingresados manualmente."
+    )
