@@ -335,20 +335,12 @@ def export_to_pptx(df_monthly: pd.DataFrame, params: ProjectionParams,   # noqa:
         rect(slide, 0, Inches(0.07), W, Inches(1.05), C_PANEL)
         # línea vertical naranja izquierda
         rect(slide, Inches(0.35), Inches(0.14), Inches(0.045), Inches(0.9), C_ORANGE)
-        # Logo en header: fondo blanco redondeado + imagen con ratio correcto
-        LOGO_W = Inches(2.15)
-        LOGO_PAD_H = Inches(0.12)
-        LOGO_PAD_V = Inches(0.1)
-        logo_l = W - LOGO_W - Inches(0.18)
-        logo_t = Inches(0.1)
-        logo_box_h = Inches(0.9)
-        _s = slide.shapes.add_shape(5, logo_l - LOGO_PAD_H, logo_t,
-                                    LOGO_W + LOGO_PAD_H * 2, logo_box_h)
-        _s.fill.solid(); _s.fill.fore_color.rgb = C_WHITE
-        _s.line.fill.background()
-        _s.adjustments[0] = 0.08
-        add_logo(slide, logo_l, logo_t + LOGO_PAD_V, LOGO_W)
-        # Número de slide (izq. del logo)
+        # Logo directo (PNG con alpha) — sin fondo extra
+        LOGO_W = Inches(2.0)
+        logo_l = W - LOGO_W - Inches(0.2)
+        logo_t = Inches(0.14)
+        add_logo(slide, logo_l, logo_t, LOGO_W)
+        # Número de slide a la izquierda del logo
         if slide_num:
             txt(slide, slide_num, logo_l - Inches(0.85), Inches(0.2), Inches(0.65), Inches(0.45),
                 size=18, bold=True, color=C_ORANGE, align=PP_ALIGN.RIGHT)
@@ -401,11 +393,11 @@ def export_to_pptx(df_monthly: pd.DataFrame, params: ProjectionParams,   # noqa:
                 align=PP_ALIGN.CENTER, italic=True)
 
     def add_logo(slide, l, t, w):
-        """Inserta logo SMB preservando aspect ratio (solo ancho controlado)."""
+        """Logo ya tiene canal alpha — se inserta directo sin fondo."""
         if HAS_LOGO:
             slide.shapes.add_picture(LOGO_PATH, l, t, width=w)
 
-    def style_chart(chart, bg_color=None):
+    def style_chart(chart):
         """Fondo transparente y quitar borde al área de plot."""
         try:
             chart.plot_area.format.fill.background()
@@ -415,28 +407,48 @@ def export_to_pptx(df_monthly: pd.DataFrame, params: ProjectionParams,   # noqa:
         except Exception:
             pass
 
-    def fix_invert_negative(chart):
-        """Desactiva la inversión de color en barras negativas (val=0).
+    def color_bars_explicit(chart, values, pos_hex="F47920", neg_hex="F87171"):
+        """Asigna fill explícito por dPt a cada barra — gana sobre cualquier tema.
 
-        El elemento <c:invertIfNegative> debe ir DESPUÉS de <c:spPr> en el
-        schema OOXML — etree.SubElement lo pone al final lo que PowerPoint ignora.
-        Usamos insert() en la posición correcta.
+        Usando dPt (data point) se evita la inversión de color que PowerPoint
+        aplica en barras negativas cuando el fill viene sólo del series-level spPr.
+        También desactiva invertIfNegative en el series element como refuerzo.
         """
         try:
-            for plot in chart.plots:
-                for ser in plot.series:
-                    sp = ser._element
-                    # Quitar si ya existe (posición incorrecta)
-                    existing = sp.find(qn("c:invertIfNegative"))
-                    if existing is not None:
-                        sp.remove(existing)
-                    # Insertar justo después de c:spPr
-                    children = list(sp)
-                    spPr_el = sp.find(qn("c:spPr"))
-                    pos = (children.index(spPr_el) + 1) if spPr_el is not None else len(children)
-                    inv = etree.Element(qn("c:invertIfNegative"))
-                    inv.set("val", "0")
-                    sp.insert(pos, inv)
+            ser = chart.plots[0].series[0]
+            sp  = ser._element
+
+            # 1. Quitar invertIfNegative del series-level y poner val=0
+            inv = sp.find(qn("c:invertIfNegative"))
+            if inv is None:
+                inv = etree.Element(qn("c:invertIfNegative"))
+                spPr_el = sp.find(qn("c:spPr"))
+                pos0 = list(sp).index(spPr_el) + 1 if spPr_el is not None else 0
+                sp.insert(pos0, inv)
+            inv.set("val", "0")
+
+            # 2. Eliminar dPt existentes
+            for dpt in sp.findall(qn("c:dPt")):
+                sp.remove(dpt)
+
+            # 3. Posición de inserción: después de invertIfNegative
+            inv_idx = list(sp).index(inv)
+
+            # 4. Crear un dPt por cada barra
+            for i, val in enumerate(values):
+                clr = pos_hex if val >= 0 else neg_hex
+                dPt = etree.Element(qn("c:dPt"))
+                idx_el = etree.SubElement(dPt, qn("c:idx"))
+                idx_el.set("val", str(i))
+                inv_pt = etree.SubElement(dPt, qn("c:invertIfNegative"))
+                inv_pt.set("val", "0")
+                spPr_dpt = etree.SubElement(dPt, qn("c:spPr"))
+                sf = etree.SubElement(spPr_dpt, qn("a:solidFill"))
+                srgb = etree.SubElement(sf, qn("a:srgbClr"))
+                srgb.set("val", clr)
+                ln = etree.SubElement(spPr_dpt, qn("a:ln"))
+                etree.SubElement(ln, qn("a:noFill"))
+                sp.insert(inv_idx + 1 + i, dPt)
         except Exception:
             pass
 
@@ -480,14 +492,8 @@ def export_to_pptx(df_monthly: pd.DataFrame, params: ProjectionParams,   # noqa:
     rect(s1, 0, 0, Inches(0.55), H, C_ORANGE)
     rect(s1, Inches(0.55), 0, Inches(0.12), H, C_ORANGE2)
 
-    # Logo SMB en portada: caja blanca + imagen con ratio correcto
-    _LPAD = Inches(0.15)
-    _LBOX_W = Inches(4.1)
-    _LBOX_H = Inches(1.5)
-    _s_logo = s1.shapes.add_shape(5, Inches(0.85), Inches(0.45), _LBOX_W, _LBOX_H)
-    _s_logo.fill.solid(); _s_logo.fill.fore_color.rgb = C_WHITE
-    _s_logo.line.fill.background(); _s_logo.adjustments[0] = 0.06
-    add_logo(s1, Inches(0.85) + _LPAD, Inches(0.45) + _LPAD, _LBOX_W - _LPAD * 2)
+    # Logo SMB portada directo (PNG con alpha — no necesita fondo blanco)
+    add_logo(s1, Inches(0.85), Inches(0.45), Inches(3.9))
 
     # Línea divisoria naranja bajo el logo (logo termina en 0.45+1.5=1.95")
     rect(s1, Inches(0.85), Inches(2.08), Inches(8.8), Inches(0.035), C_ORANGE)
@@ -821,9 +827,8 @@ def export_to_pptx(df_monthly: pd.DataFrame, params: ProjectionParams,   # noqa:
     chart5.has_legend = False
     chart5.has_title  = False
     style_chart(chart5)
-    chart5.plots[0].series[0].format.fill.solid()
-    chart5.plots[0].series[0].format.fill.fore_color.rgb = C_ORANGE
-    fix_invert_negative(chart5)
+    # Colores explícitos por dPt: naranja si positivo, rojo si negativo
+    color_bars_explicit(chart5, vals5, pos_hex="F47920", neg_hex="F87171")
     add_data_labels(chart5, font_size=9)
 
     # Breakeven line (zero)
@@ -881,7 +886,6 @@ def export_to_pptx(df_monthly: pd.DataFrame, params: ProjectionParams,   # noqa:
     chart6.plots[0].series[0].format.fill.fore_color.rgb = C_ORANGE
     chart6.plots[0].series[1].format.fill.solid()
     chart6.plots[0].series[1].format.fill.fore_color.rgb = C_PURPLE
-    fix_invert_negative(chart6)
     try:
         chart6.legend.font.size = Pt(9)
         chart6.legend.font.color.rgb = C_LGRAY
