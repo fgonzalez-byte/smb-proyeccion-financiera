@@ -871,7 +871,7 @@ params = ProjectionParams(
     npl_rate=npl_rate,
     initial_equity=initial_equity,
     tax_rate=tax_rate,
-    overrides=[Override(**ov) for ov in st.session_state.overrides],
+    overrides=[Override(**{k: v for k, v in ov.items() if k in Override.__dataclass_fields__}) for ov in st.session_state.overrides],
 )
 
 # Guardar escenario si fue solicitado
