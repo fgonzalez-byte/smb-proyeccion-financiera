@@ -15,7 +15,7 @@ from charts import (
     plot_portfolio_evolution, plot_income_vs_costs, plot_net_result,
     plot_margin_trend, plot_cost_breakdown, plot_waterfall_annual, plot_comparison,
 )
-from export import export_to_excel
+from export import export_to_excel, export_to_pptx
 from scenarios import list_scenarios, save_scenario, load_scenario, delete_scenario
 
 EXCEL_FILE = "Balance 05-2026 v2.xlsx"
@@ -435,13 +435,19 @@ with st.sidebar:
         st.caption(f"Año {_yr_t}, Mes {_mo_t:02d} en adelante")
 
         if st.button("Agregar tramo", key="btn_tramo", use_container_width=True):
-            st.session_state.overrides.append({
+            nuevo = {
                 "param":      "portfolio_growth",
                 "from_month": int(tramo_mes),
                 "value":      float(tramo_val),
                 "note":       f"Tramo crecimiento M${tramo_val:.0f}/mes",
                 "is_delta":   False,
-            })
+            }
+            # Reemplazar si ya existe tramo en el mismo mes (evita duplicados)
+            st.session_state.overrides = [
+                ov for ov in st.session_state.overrides
+                if not (ov.get("param") == "portfolio_growth" and ov.get("from_month") == int(tramo_mes))
+            ]
+            st.session_state.overrides.append(nuevo)
             st.rerun()
 
         # Mostrar tramos activos ordenados
@@ -845,7 +851,7 @@ with st.sidebar:
                 if loaded:
                     st.session_state.overrides = [
                         {"param": o.param, "from_month": o.from_month,
-                         "value": o.value, "note": o.note}
+                         "value": o.value, "note": o.note, "is_delta": o.is_delta}
                         for o in loaded.overrides
                     ]
                     st.session_state.active_scenario = sc_load_sel
@@ -1227,6 +1233,34 @@ with tab_scenarios:
                 st.rerun()
             else:
                 st.error("Error al guardar. Verifica el nombre.")
+
+    # ── Descargar escenario actual ───────────────────────────────────────────
+    st.markdown("#### 📥 Descargar escenario actual")
+    _sc_label = st.session_state.active_scenario or "Escenario"
+    _fname    = _sc_label.replace(" ", "_")
+    _ts       = datetime.now().strftime("%Y%m%d_%H%M")
+
+    dl_col1, dl_col2 = st.columns(2)
+    with dl_col1:
+        _excel_bytes = export_to_excel(df_monthly, params)
+        st.download_button(
+            label="📊 Descargar Excel",
+            data=_excel_bytes,
+            file_name=f"{_fname}_{_ts}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            use_container_width=True,
+            help="Proyección completa: 5 hojas (Resumen, Mensual, Trimestral, Semestral, Anual)",
+        )
+    with dl_col2:
+        _pptx_bytes = export_to_pptx(df_monthly, params, scenario_name=_sc_label)
+        st.download_button(
+            label="📑 Descargar PowerPoint",
+            data=_pptx_bytes,
+            file_name=f"{_fname}_{_ts}.pptx",
+            mime="application/vnd.openxmlformats-officedocument.presentationml.presentation",
+            use_container_width=True,
+            help="Presentación ejecutiva: portada, parámetros, KPIs, tabla anual y gráficos (7 diapositivas)",
+        )
 
     st.markdown("---")
 
