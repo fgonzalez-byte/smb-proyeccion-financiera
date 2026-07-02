@@ -18,6 +18,7 @@ class Override:
     value: float      # nuevo valor (absoluto) o incremento (si is_delta=True)
     note: str = ""    # descripción opcional
     is_delta: bool = False  # True → suma incremental al valor vigente; False → reemplaza
+    to_month: int = 0       # 0 = permanente; >0 = aplica solo hasta ese mes (inclusive)
 
     def year_label(self) -> str:
         yr = (self.from_month - 1) // 12 + 1
@@ -69,6 +70,7 @@ class ProjectionParams:
     leasing_annual_growth_mm: float = 200.0  # Crecimiento anual leasing (M$ nominal)
     uf_value: float = 39900.0               # Valor UF en pesos al inicio proyección
     monthly_ipc: float = 0.35               # IPC mensual proyectado (%) para reajuste UF
+    leasing_avg_term_months: int = 36        # Plazo promedio contratos leasing (meses)
 
     # ── Financiamiento ────────────────────────────────────────────────────────
     funding_cost_rate: float = 0.44          # Costo de fondo mensual (%) — sobre cartera total
@@ -79,9 +81,6 @@ class ProjectionParams:
     other_expenses: float = 11.0             # Otros gastos no operacionales (M$/mes)
     annual_op_increment: float = 5.0         # Incremento anual costos op (M$/año)
 
-    # ── Personal ──────────────────────────────────────────────────────────────
-    new_executive_salary: float = 5.0        # Sueldo nuevo ejecutivo (M$/mes)
-    executive_hire_every_n_years: int = 2    # Contratar ejecutivo cada N años
 
     # ── Riesgo y provisiones ──────────────────────────────────────────────────
     provision_rate: float = 1.5              # % anual gasto provisiones sobre cartera total
@@ -120,7 +119,8 @@ class ProjectionParams:
         }
         value = base_values.get(param, 0.0)
         for ov in sorted(self.overrides, key=lambda x: x.from_month):
-            if ov.param == param and ov.from_month <= month:
+            in_range = ov.from_month <= month and (ov.to_month == 0 or month <= ov.to_month)
+            if ov.param == param and in_range:
                 if ov.is_delta:
                     value += ov.value   # acumulativo
                 else:
@@ -188,9 +188,21 @@ def generate_monthly_projection(params: ProjectionParams, total_months: int = 72
 
         # ── Ingresos ──────────────────────────────────────────────────────────
         factoring_income  = factoring_portfolio * (placement_pct / 100.0)
-        leasing_monthly_r = leasing_annual_rate / 12.0 / 100.0
-        leasing_income    = leasing_portfolio_mm * leasing_monthly_r   # intereses sobre cartera reajustada
-        total_income      = factoring_income + leasing_income + reajuste_leasing
+
+        # Ingreso leasing: método lineal (total intereses / plazo), igual que SMB
+        # Total intereses = cuota × plazo - principal; cuota = P × r/(1-(1+r)^-n)
+        r_mes = leasing_annual_rate / 12.0 / 100.0
+        n     = params.leasing_avg_term_months
+        if r_mes > 0:
+            cuota_unitaria    = r_mes / (1.0 - (1.0 + r_mes) ** (-n))
+            total_int_factor  = cuota_unitaria * n - 1.0   # % interés sobre principal
+        else:
+            total_int_factor  = 0.0
+        monthly_sl_rate   = total_int_factor / n            # tasa lineal mensual
+        leasing_income    = leasing_portfolio_mm * monthly_sl_rate
+
+        # Reajuste UF: diferencia de cambio (línea 135 EERR) — no es ingreso operacional
+        total_income      = factoring_income + leasing_income
 
         # ── Costo de fondo (sobre cartera total) ─────────────────────────────
         total_portfolio = factoring_portfolio + leasing_portfolio_mm
@@ -209,27 +221,33 @@ def generate_monthly_projection(params: ProjectionParams, total_months: int = 72
         annual_increment_accrued = params.annual_op_increment * (year - 1)
         total_op_costs = base_op + annual_increment_accrued / 12.0
 
-        executives_hired   = (year - 1) // params.executive_hire_every_n_years
-        total_remuneration = base_rem + executives_hired * params.new_executive_salary
+        total_remuneration = base_rem
         other_exp          = params.get_param_at_month("otros_gastos", m)
 
         total_costs = total_op_costs + total_remuneration + other_exp
 
-        # ── EBIT e Impuesto ───────────────────────────────────────────────────
-        ebit         = net_financial_margin - total_costs
+        # ── EBIT ─────────────────────────────────────────────────────────────
+        ebit = net_financial_margin - total_costs
+
+        # ── Diferencia de cambio (reajuste UF, línea 135 EERR) ───────────────
+        # Se suma al EBIT antes del impuesto, igual que en el EERR real
+        resultado_antes_impuesto = ebit + reajuste_leasing
+
+        # ── Impuesto ─────────────────────────────────────────────────────────
         tax_rate_pct = params.get_param_at_month("tax_rate", m)
-        tax          = max(0.0, ebit * (tax_rate_pct / 100.0))
-        net_result   = ebit - tax
+        tax          = max(0.0, resultado_antes_impuesto * (tax_rate_pct / 100.0))
+        net_result   = resultado_antes_impuesto - tax
 
         # ── Patrimonio ────────────────────────────────────────────────────────
         equity_start = equity
         equity      += net_result
 
         # ── KPIs ──────────────────────────────────────────────────────────────
-        net_margin_pct = (net_result  / total_income   * 100) if total_income   > 0 else 0.0
-        efficiency_pct = (total_costs / financial_margin * 100) if financial_margin > 0 else 0.0
-        roa_pct        = (net_result * 12 / total_portfolio * 100) if total_portfolio > 0 else 0.0
-        roe_pct        = (net_result * 12 / equity_start   * 100) if equity_start     > 0 else 0.0
+        total_income_incl_reaj = total_income + reajuste_leasing
+        net_margin_pct = (net_result  / total_income_incl_reaj * 100) if total_income_incl_reaj > 0 else 0.0
+        efficiency_pct = (total_costs / financial_margin        * 100) if financial_margin        > 0 else 0.0
+        roa_pct        = (net_result * 12 / total_portfolio     * 100) if total_portfolio         > 0 else 0.0
+        roe_pct        = (net_result * 12 / equity_start        * 100) if equity_start            > 0 else 0.0
 
         rows.append({
             "Mes":                   m,
@@ -261,8 +279,10 @@ def generate_monthly_projection(params: ProjectionParams, total_months: int = 72
             "Remuneraciones":          round(total_remuneration, 2),
             "Otros_gastos":            round(other_exp, 2),
             "Total_costos":            round(total_costs, 2),
-            # EBIT, Impuesto, Resultado
+            # EBIT, Diferencia de cambio, Impuesto, Resultado
             "EBIT":                    round(ebit, 2),
+            "Diferencia_cambio":       round(reajuste_leasing, 2),
+            "Resultado_antes_imp":     round(resultado_antes_impuesto, 2),
             "Impuesto":                round(tax, 2),
             "Resultado_neto":          round(net_result, 2),
             # Patrimonio
@@ -272,7 +292,6 @@ def generate_monthly_projection(params: ProjectionParams, total_months: int = 72
             "Eficiencia_pct":          round(efficiency_pct, 2),
             "ROA_pct":                 round(roa_pct, 2),
             "ROE_pct":                 round(roe_pct, 2),
-            "Ejecutivos_adicionales": executives_hired,
         })
 
     return pd.DataFrame(rows)
@@ -302,11 +321,12 @@ def aggregate_by_period(df: pd.DataFrame, period: str) -> pd.DataFrame:
         "Costo_fondo", "Margen_financiero",
         "Provision_expense", "Margen_financiero_neto",
         "Costos_operacionales", "Remuneraciones", "Otros_gastos",
-        "Total_costos", "EBIT", "Impuesto", "Resultado_neto", "Crecimiento_mensual",
+        "Total_costos", "EBIT", "Diferencia_cambio", "Resultado_antes_imp",
+        "Impuesto", "Resultado_neto", "Crecimiento_mensual",
     ]
     last_cols = [
         "Cartera", "Cartera_leasing", "Cartera_total",
-        "Cartera_leasing_uf", "UF_valor", "Ejecutivos_adicionales",
+        "Cartera_leasing_uf", "UF_valor",
         "NPL_portfolio", "Patrimonio",
     ]
     agg_dict = {c: "sum" for c in sum_cols if c in df.columns}

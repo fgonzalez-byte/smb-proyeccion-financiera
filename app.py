@@ -522,9 +522,22 @@ with st.sidebar:
         key="nb_leas_growth",
         help="Nuevos contratos de leasing por año en M$ nominales",
     )
+    leasing_avg_term = st.number_input(
+        "Plazo promedio contratos (meses)",
+        min_value=6, max_value=120, value=36, step=6,
+        key="nb_leas_term",
+        help="Plazo promedio de los contratos de leasing. SMB: 36 meses.",
+    )
+    # Calcula y muestra la tasa lineal efectiva resultante
+    _r = leasing_annual_rate / 12 / 100
+    _n = leasing_avg_term
+    _cuota = _r / (1 - (1 + _r) ** (-_n)) if _r > 0 else 1/_n
+    _total_int = (_cuota * _n - 1) * 100
+    _sl_rate   = _total_int / _n
     st.caption(
         f"Tasa mensual: **{leasing_annual_rate/12:.3f}%** · "
-        f"IPC anual equiv.: **{((1+monthly_ipc/100)**12-1)*100:.1f}%**"
+        f"IPC anual equiv.: **{((1+monthly_ipc/100)**12-1)*100:.1f}%** · "
+        f"Interés total contrato: **{_total_int:.1f}%** → lineal **{_sl_rate:.3f}%/mes**"
     )
 
     # ── Riesgo, provisiones e impuesto ─────────────────────────────────────
@@ -570,18 +583,103 @@ with st.sidebar:
         min_value=0.0, value=5.0, step=1.0,
         key="nb_op_inc",
     )
-    new_executive_salary = st.number_input(
-        "Sueldo nuevo ejecutivo (M$/mes)",
-        min_value=0.0, value=5.0, step=0.5,
-        key="nb_exec_sal",
-    )
-    executive_hire_interval = st.selectbox(
-        "Contratar ejecutivo cada",
-        options=[1, 2, 3, 4],
-        index=1,
-        format_func=lambda x: f"{x} {'año' if x == 1 else 'años'}",
-        key="nb_exec_int",
-    )
+
+    # ── Ajustes de personal ─────────────────────────────────────────────────
+    _PERSONAL_TIPOS = {
+        "Aumento de sueldo":  ("remuneration",      True),
+        "Bono / gratificación": ("remuneration",    True),
+        "Reajuste IPC/UF":    ("remuneration",      True),
+        "Nuevo cargo":        ("remuneration",      True),
+        "Aumento costos op.": ("operational_costs", True),
+        "Otro gasto personal":("otros_gastos",      True),
+    }
+    _DURACION_OPTS = ["Permanente (desde ese mes)", "Solo ese mes", "Período específico"]
+
+    _personal_ovs = [
+        ov for ov in st.session_state.overrides
+        if ov.get("param") in ("remuneration", "operational_costs", "otros_gastos")
+        and ov.get("_seccion") == "personal"
+    ]
+
+    with st.expander(
+        f"Ajustes de personal ({len(_personal_ovs)} activos)" if _personal_ovs else "Agregar ajuste de personal",
+        expanded=False,
+    ):
+        p_tipo  = st.selectbox("Tipo", list(_PERSONAL_TIPOS.keys()), key="p_tipo_sel")
+        p_desc  = st.text_input("Descripción", key="p_desc_inp", max_chars=60,
+                                placeholder="ej: Reajuste sueldo base, Bono diciembre…")
+        p_monto = st.number_input("Monto (M$/mes)", min_value=0.0, step=0.5,
+                                  format="%.1f", key="p_monto_inp")
+        p_desde = st.number_input("Desde mes #", min_value=1, max_value=72,
+                                  value=1, step=1, key="p_desde_inp")
+
+        p_dur   = st.radio("Duración", _DURACION_OPTS, key="p_dur_radio", horizontal=False)
+
+        p_hasta = p_desde  # default para "solo ese mes"
+        if p_dur == "Período específico":
+            p_hasta = st.number_input("Hasta mes #", min_value=p_desde,
+                                      max_value=72, value=min(p_desde+11, 72),
+                                      step=1, key="p_hasta_inp")
+
+        # Preview
+        _yr_p  = (int(p_desde) - 1) // 12 + 1
+        _mo_p  = (int(p_desde) - 1) % 12 + 1
+        if p_dur == "Permanente (desde ese mes)":
+            _dur_txt = f"desde Año {_yr_p} Mes {_mo_p:02d} en adelante"
+            _to = 0
+        elif p_dur == "Solo ese mes":
+            _dur_txt = f"solo Año {_yr_p} Mes {_mo_p:02d}"
+            _to = int(p_desde)
+        else:
+            _yr_h = (int(p_hasta) - 1) // 12 + 1
+            _mo_h = (int(p_hasta) - 1) % 12 + 1
+            _dur_txt = f"Mes {p_desde} → Mes {p_hasta} (Año {_yr_p}M{_mo_p:02d}–Año {_yr_h}M{_mo_h:02d})"
+            _to = int(p_hasta)
+
+        st.caption(f"M${p_monto:.1f}/mes · {_dur_txt}")
+
+        if st.button("Agregar ajuste", key="btn_add_personal", use_container_width=True):
+            _param, _delta = _PERSONAL_TIPOS[p_tipo]
+            _note = p_tipo + (f": {p_desc.strip()}" if p_desc.strip() else "")
+            st.session_state.overrides.append({
+                "param":      _param,
+                "from_month": int(p_desde),
+                "to_month":   _to,
+                "value":      float(p_monto),
+                "note":       _note,
+                "is_delta":   _delta,
+                "_seccion":   "personal",
+            })
+            st.rerun()
+
+        # Listado de ajustes activos de personal
+        if _personal_ovs:
+            st.markdown("**Ajustes activos:**")
+            for idx_g, ov in enumerate(st.session_state.overrides):
+                if ov.get("_seccion") != "personal":
+                    continue
+                yr_f = (ov["from_month"] - 1) // 12 + 1
+                to_m = ov.get("to_month", 0)
+                if to_m == 0:
+                    rng = f"Mes {ov['from_month']} (Año {yr_f}) →"
+                elif to_m == ov["from_month"]:
+                    rng = f"Solo mes {ov['from_month']} (Año {yr_f})"
+                else:
+                    yr_t = (to_m - 1) // 12 + 1
+                    rng = f"Mes {ov['from_month']}–{to_m} (Año {yr_f}–{yr_t})"
+                col_pa, col_pb = st.columns([5, 1])
+                with col_pa:
+                    st.markdown(
+                        f'<div class="ov-badge" style="border-color:#6ee7b7;">'
+                        f'<b>{ov.get("note","")}</b> '
+                        f'<span style="color:#6ee7b7;font-weight:700;">+M${ov["value"]:.1f}/mes</span>'
+                        f'<br><span style="color:#64748b;font-size:0.75rem;">{rng}</span></div>',
+                        unsafe_allow_html=True,
+                    )
+                with col_pb:
+                    if st.button("✕", key=f"del_p_{idx_g}"):
+                        st.session_state.overrides.pop(idx_g)
+                        st.rerun()
 
     # ── Gastos proyectados (contrataciones y nuevos costos) ─────────────────
     st.markdown('<p class="sb-section">📅 Gastos Proyectados</p>', unsafe_allow_html=True)
@@ -745,8 +843,7 @@ params = ProjectionParams(
     current_remuneration=current_remuneration,
     other_expenses=other_expenses,
     annual_op_increment=annual_op_increment,
-    new_executive_salary=new_executive_salary,
-    executive_hire_every_n_years=executive_hire_interval,
+    leasing_avg_term_months=leasing_avg_term,
     provision_rate=provision_rate,
     npl_rate=npl_rate,
     initial_equity=initial_equity,
@@ -875,7 +972,7 @@ with tab_dash:
     display_cols = ["Periodo", "Cartera", "Ingresos_factoring", "Margen_financiero",
                     "Provision_expense", "Total_costos", "EBIT", "Impuesto",
                     "Resultado_neto", "Patrimonio", "Margen_neto_pct", "ROA_pct",
-                    "ROE_pct", "Eficiencia_pct", "Ejecutivos_adicionales"]
+                    "ROE_pct", "Eficiencia_pct"]
     display_cols = [c for c in display_cols if c in df_annual.columns]
 
     rename_map = {
@@ -888,12 +985,12 @@ with tab_dash:
         "Costos_operacionales": "Costos Op. (M$)", "Remuneraciones": "Remuner. (M$)",
         "Otros_gastos": "Otros Gastos (M$)",
         "Total_costos": "Total Costos (M$)",
-        "EBIT": "EBIT (M$)", "Impuesto": "Impuesto (M$)",
+        "EBIT": "EBIT (M$)", "Diferencia_cambio": "Dif. Cambio (M$)",
+        "Resultado_antes_imp": "Res. Antes Imp. (M$)", "Impuesto": "Impuesto (M$)",
         "Resultado_neto": "Resultado Neto (M$)",
         "Patrimonio": "Patrimonio (M$)",
         "Margen_neto_pct": "Margen Neto (%)", "ROA_pct": "ROA (%)",
         "ROE_pct": "ROE (%)", "Eficiencia_pct": "Eficiencia (%)",
-        "Ejecutivos_adicionales": "Ejec. +",
     }
 
     df_ann_disp = df_annual[display_cols].rename(columns=rename_map)
@@ -948,13 +1045,15 @@ with tab_table:
         show_cols = ["Mes", "Año", "Cartera", "Ingresos_factoring", "Costo_fondo",
                      "Margen_financiero", "Provision_expense", "Costos_operacionales",
                      "Remuneraciones", "Otros_gastos", "Total_costos",
-                     "EBIT", "Impuesto", "Resultado_neto", "Patrimonio",
+                     "EBIT", "Diferencia_cambio", "Resultado_antes_imp",
+                     "Impuesto", "Resultado_neto", "Patrimonio",
                      "Margen_neto_pct", "ROE_pct", "Eficiencia_pct", "ROA_pct"]
     else:
         show_cols = ["Periodo", "Cartera", "Ingresos_factoring", "Costo_fondo",
                      "Margen_financiero", "Provision_expense", "Costos_operacionales",
                      "Remuneraciones", "Otros_gastos", "Total_costos",
-                     "EBIT", "Impuesto", "Resultado_neto", "Patrimonio",
+                     "EBIT", "Diferencia_cambio", "Resultado_antes_imp",
+                     "Impuesto", "Resultado_neto", "Patrimonio",
                      "Margen_neto_pct", "ROE_pct", "Eficiencia_pct", "ROA_pct"]
 
     show_cols = [c for c in show_cols if c in df_period.columns]

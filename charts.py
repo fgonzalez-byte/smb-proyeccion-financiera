@@ -89,17 +89,6 @@ def plot_portfolio_evolution(df: pd.DataFrame) -> go.Figure:
             hovertemplate="Mes %{x}<br>Cartera: $%{y:,.0f}M<extra></extra>",
         ))
 
-    # Marcar contratación de ejecutivos
-    mask   = df["Ejecutivos_adicionales"] != df["Ejecutivos_adicionales"].shift(1).fillna(0)
-    hire_df = df[mask & (df["Ejecutivos_adicionales"] > 0)]
-    if not hire_df.empty:
-        y_col = "Cartera_total" if has_leasing else "Cartera"
-        fig.add_trace(go.Scatter(
-            x=hire_df["Mes"], y=hire_df[y_col],
-            mode="markers", name="Nuevo ejecutivo",
-            marker=dict(symbol="star", size=12, color="#fbbf24", line=dict(color="white", width=1)),
-            hovertemplate="Mes %{x} — Nuevo ejecutivo contratado<extra></extra>",
-        ))
 
     _add_year_markers(fig)
     fig.update_layout(
