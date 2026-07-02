@@ -820,9 +820,15 @@ def export_to_pptx(df_monthly: pd.DataFrame, params: ProjectionParams,   # noqa:
     vals5 = [round(r["Resultado_neto"], 1) for _, r in df_annual.iterrows()]
     cd5.add_series("Resultado Neto (M$)", vals5)
 
+    # Layout: panel 3.0" a la derecha → gráfico ocupa el resto sin superponerse
+    PANEL_W  = Inches(3.0)
+    PANEL_L  = W - PANEL_W - Inches(0.15)    # 10.18"
+    CHART_L  = Inches(0.4)
+    CHART_W  = PANEL_L - CHART_L - Inches(0.15)  # ≈ 9.63"
+
     chart5 = s5.shapes.add_chart(
         XL_CHART_TYPE.COLUMN_CLUSTERED,
-        Inches(0.5), Inches(1.18), Inches(12.3), Inches(5.95), cd5
+        CHART_L, Inches(1.18), CHART_W, Inches(5.95), cd5
     ).chart
     chart5.has_legend = False
     chart5.has_title  = False
@@ -831,7 +837,6 @@ def export_to_pptx(df_monthly: pd.DataFrame, params: ProjectionParams,   # noqa:
     color_bars_explicit(chart5, vals5, pos_hex="F47920", neg_hex="F87171")
     add_data_labels(chart5, font_size=9)
 
-    # Breakeven line (zero)
     try:
         va5 = chart5.value_axis
         va5.has_major_gridlines = True
@@ -843,23 +848,26 @@ def export_to_pptx(df_monthly: pd.DataFrame, params: ProjectionParams,   # noqa:
     except Exception:
         pass
 
-    # Mini tabla resumen al costado
-    mn_l = Inches(9.8)
-    my   = Inches(1.25)
-    rect(s5, mn_l, my, Inches(3.3), Inches(5.9), C_PANEL)
-    txt(s5, "RESUMEN", mn_l + Inches(0.1), my + Inches(0.08),
-        Inches(3.0), Inches(0.3), size=8, bold=True, color=C_ORANGE)
+    # Panel resumen lateral (no se superpone con el gráfico)
+    my = Inches(1.25)
+    rect(s5, PANEL_L, my, PANEL_W, Inches(5.9), C_PANEL)
+    rect(s5, PANEL_L, my, PANEL_W, Inches(0.04), C_ORANGE)
+    txt(s5, "RESUMEN", PANEL_L + Inches(0.12), my + Inches(0.08),
+        PANEL_W - Inches(0.2), Inches(0.3), size=8, bold=True, color=C_ORANGE)
+    row_h = Inches(0.82)
     for i, (_, row) in enumerate(df_annual.iterrows()):
-        rty  = my + Inches(0.42) + i * Inches(0.73)
+        rty  = my + Inches(0.44) + i * row_h
         bg_r = C_ACCENT if i % 2 == 0 else C_PANEL
-        rect(s5, mn_l, rty, Inches(3.3), Inches(0.7), bg_r)
-        rect(s5, mn_l, rty, Inches(0.04), Inches(0.7),
-             C_GREEN if row["Resultado_neto"] >= 0 else C_RED)
-        txt(s5, str(row["Periodo"]), mn_l + Inches(0.12), rty + Inches(0.04),
-            Inches(1.6), Inches(0.3), size=8, color=C_LGRAY)
-        clr_r = C_GREEN if row["Resultado_neto"] >= 0 else C_RED
-        txt(s5, f"M${row['Resultado_neto']:,.0f}", mn_l + Inches(0.12), rty + Inches(0.34),
-            Inches(3.0), Inches(0.3), size=11, bold=True, color=clr_r)
+        rect(s5, PANEL_L, rty, PANEL_W, row_h, bg_r)
+        accent_clr = C_GREEN if row["Resultado_neto"] >= 0 else C_RED
+        rect(s5, PANEL_L, rty, Inches(0.045), row_h, accent_clr)
+        txt(s5, str(row["Periodo"]),
+            PANEL_L + Inches(0.12), rty + Inches(0.05),
+            PANEL_W - Inches(0.2), Inches(0.28), size=8, color=C_LGRAY)
+        txt(s5, f"M${row['Resultado_neto']:,.0f}",
+            PANEL_L + Inches(0.12), rty + Inches(0.38),
+            PANEL_W - Inches(0.2), Inches(0.35),
+            size=13, bold=True, color=accent_clr)
 
     # ══════════════════════════════════════════════════════════════════════════
     # SLIDE — GRÁFICO: EVOLUCIÓN DE CARTERA
@@ -875,9 +883,13 @@ def export_to_pptx(df_monthly: pd.DataFrame, params: ProjectionParams,   # noqa:
     cd6.add_series("Factoring", [round(r["Cartera"], 0) for _, r in df_annual.iterrows()])
     cd6.add_series("Leasing",   [round(r["Cartera_leasing"], 0) for _, r in df_annual.iterrows()])
 
+    P6W  = Inches(3.0)
+    P6L  = W - P6W - Inches(0.15)
+    C6W  = P6L - Inches(0.4) - Inches(0.15)
+
     chart6 = s6.shapes.add_chart(
         XL_CHART_TYPE.COLUMN_STACKED,
-        Inches(0.4), Inches(1.18), Inches(8.8), Inches(5.95), cd6
+        Inches(0.4), Inches(1.18), C6W, Inches(5.95), cd6
     ).chart
     chart6.has_legend = True
     chart6.has_title  = False
@@ -896,25 +908,27 @@ def export_to_pptx(df_monthly: pd.DataFrame, params: ProjectionParams,   # noqa:
     except Exception:
         pass
 
-    # Panel lateral: crecimiento anual
-    px6 = Inches(9.4)
+    # Panel lateral: crecimiento anual (sin superposición)
     py6 = Inches(1.22)
-    rect(s6, px6, py6, Inches(3.7), Inches(5.9), C_PANEL)
-    txt(s6, "CRECIMIENTO POR AÑO", px6 + Inches(0.1), py6 + Inches(0.08),
-        Inches(3.4), Inches(0.3), size=8, bold=True, color=C_TEAL)
+    row6_h = Inches(0.82)
+    rect(s6, P6L, py6, P6W, Inches(5.9), C_PANEL)
+    rect(s6, P6L, py6, P6W, Inches(0.04), C_TEAL)
+    txt(s6, "CRECIMIENTO POR AÑO", P6L + Inches(0.12), py6 + Inches(0.08),
+        P6W - Inches(0.2), Inches(0.3), size=8, bold=True, color=C_TEAL)
     prev_total = params.initial_portfolio + leas_mm
     for i, (_, row) in enumerate(df_annual.iterrows()):
         curr_total = row["Cartera_total"]
         incr = curr_total - prev_total
-        rty  = py6 + Inches(0.42) + i * Inches(0.73)
-        rect(s6, px6, rty, Inches(3.7), Inches(0.7),
-             C_ACCENT if i % 2 == 0 else C_PANEL)
-        txt(s6, str(row["Periodo"]), px6 + Inches(0.1), rty + Inches(0.04),
-            Inches(2.0), Inches(0.3), size=8, color=C_LGRAY)
-        txt(s6, f"M${curr_total:,.0f}", px6 + Inches(0.1), rty + Inches(0.34),
-            Inches(2.2), Inches(0.3), size=10, bold=True, color=C_WHITE)
-        txt(s6, f"+M${incr:,.0f}", px6 + Inches(2.3), rty + Inches(0.34),
-            Inches(1.2), Inches(0.3), size=9, bold=True, color=C_ORANGE)
+        rty  = py6 + Inches(0.44) + i * row6_h
+        rect(s6, P6L, rty, P6W, row6_h, C_ACCENT if i % 2 == 0 else C_PANEL)
+        rect(s6, P6L, rty, Inches(0.045), row6_h, C_TEAL)
+        txt(s6, str(row["Periodo"]), P6L + Inches(0.12), rty + Inches(0.05),
+            P6W - Inches(0.2), Inches(0.28), size=8, color=C_LGRAY)
+        txt(s6, f"M${curr_total:,.0f}", P6L + Inches(0.12), rty + Inches(0.36),
+            P6W * 0.6, Inches(0.3), size=10, bold=True, color=C_WHITE)
+        txt(s6, f"+{incr:,.0f}", P6L + P6W * 0.6, rty + Inches(0.36),
+            P6W * 0.36, Inches(0.3), size=9, bold=True, color=C_ORANGE,
+            align=PP_ALIGN.RIGHT)
         prev_total = curr_total
 
     # ══════════════════════════════════════════════════════════════════════════
