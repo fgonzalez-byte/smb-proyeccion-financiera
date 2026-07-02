@@ -29,43 +29,45 @@ class Override:
 # ── Parámetros principales ────────────────────────────────────────────────────
 
 PARAM_LABELS = {
-    "portfolio_growth":   "Crecimiento cartera factoring (M$/mes)",
-    "funding_cost":       "Costo de fondo (% mensual)",
-    "placement_rate":     "Tasa de colocación factoring (% mensual)",
-    "operational_costs":  "Costos operacionales (M$/mes)",
-    "remuneration":       "Remuneraciones base (M$/mes)",
-    "otros_gastos":       "Otros gastos no operacionales (M$/mes)",
-    "leasing_rate":       "Tasa anual leasing (%)",
-    "leasing_growth":     "Crecimiento cartera leasing (M$/año)",
-    "ipc_mensual":        "IPC mensual proyectado (%) — reajuste UF",
-    "provision_rate":     "Tasa de provisión anual (% cartera total)",
-    "tax_rate":           "Tasa impuesto corporativo (%)",
+    "portfolio_growth":      "Crecimiento cartera factoring (M$/mes)",
+    "funding_cost":          "Costo de fondo (% mensual)",
+    "base_funding_cost":     "Costo fijo de fondo (M$/mes)",
+    "placement_rate":        "Tasa de colocación factoring (% mensual)",
+    "operational_costs":     "Costos operacionales (M$/mes)",
+    "remuneration":          "Remuneraciones base (M$/mes)",
+    "otros_gastos":          "Otros gastos no operacionales (M$/mes)",
+    "leasing_rate":          "Tasa anual leasing (%)",
+    "leasing_growth":        "Crecimiento cartera leasing (M$/año)",
+    "ipc_mensual":           "IPC mensual proyectado (%) — reajuste UF",
+    "provision_rate":        "Tasa de provisión anual (% cartera total)",
+    "tax_rate":              "Tasa impuesto corporativo (%)",
 }
 
 PARAM_UNITS = {
-    "portfolio_growth":   "M$/mes",
-    "funding_cost":       "%",
-    "placement_rate":     "%",
-    "operational_costs":  "M$/mes",
-    "remuneration":       "M$/mes",
-    "otros_gastos":       "M$/mes",
-    "leasing_rate":       "%",
-    "leasing_growth":     "M$/año",
-    "ipc_mensual":        "%",
-    "provision_rate":     "%",
-    "tax_rate":           "%",
+    "portfolio_growth":      "M$/mes",
+    "funding_cost":          "%",
+    "base_funding_cost":     "M$/mes",
+    "placement_rate":        "%",
+    "operational_costs":     "M$/mes",
+    "remuneration":          "M$/mes",
+    "otros_gastos":          "M$/mes",
+    "leasing_rate":          "%",
+    "leasing_growth":        "M$/año",
+    "ipc_mensual":           "%",
+    "provision_rate":        "%",
+    "tax_rate":              "%",
 }
 
 
 @dataclass
 class ProjectionParams:
     # ── Factoring ─────────────────────────────────────────────────────────────
-    initial_portfolio: float = 5018.0        # Cartera factoring inicial (M$)
+    initial_portfolio: float = 4560.0        # Cartera factoring inicial (M$) — calibrado EERR May-26
     annual_portfolio_growth: float = 1000.0  # Crecimiento anual factoring (M$/año)
     placement_rate: float = 2.0              # Tasa colocación mensual (%)
 
     # ── Leasing (valores con reajuste UF) ─────────────────────────────────────
-    leasing_portfolio_uf: float = 69354.96   # Stock inicial leasing en UF
+    leasing_portfolio_uf: float = 92295.0    # Stock inicial leasing en UF — calibrado EERR May-26
     leasing_annual_rate: float = 17.0        # Tasa anual leasing (%) con reajuste
     leasing_annual_growth_mm: float = 200.0  # Crecimiento anual leasing (M$ nominal)
     uf_value: float = 39900.0               # Valor UF en pesos al inicio proyección
@@ -74,11 +76,12 @@ class ProjectionParams:
 
     # ── Financiamiento ────────────────────────────────────────────────────────
     funding_cost_rate: float = 0.44          # Costo de fondo mensual (%) — sobre cartera total
+    base_funding_cost_mm: float = 9.93       # Costo fijo de fondo (M$/mes) — overhead no proporcional a cartera
 
     # ── Costos operacionales ──────────────────────────────────────────────────
     current_op_costs: float = 28.0           # Costos op. recurrentes base (M$/mes)
-    current_remuneration: float = 57.0       # Remuneraciones base (M$/mes)
-    other_expenses: float = 11.0             # Otros gastos no operacionales (M$/mes)
+    current_remuneration: float = 59.8       # Remuneraciones base (M$/mes) — calibrado EERR May-26
+    other_expenses: float = 13.8             # Otros gastos no operacionales (M$/mes) — calibrado EERR May-26
     annual_op_increment: float = 5.0         # Incremento anual costos op (M$/año)
 
 
@@ -107,6 +110,7 @@ class ProjectionParams:
         base_values = {
             "portfolio_growth":  self.annual_portfolio_growth / 12.0,
             "funding_cost":      self.funding_cost_rate,
+            "base_funding_cost": self.base_funding_cost_mm,
             "placement_rate":    self.placement_rate,
             "operational_costs": self.current_op_costs,
             "remuneration":      self.current_remuneration,
@@ -204,9 +208,10 @@ def generate_monthly_projection(params: ProjectionParams, total_months: int = 72
         # Reajuste UF: diferencia de cambio (línea 135 EERR) — no es ingreso operacional
         total_income      = factoring_income + leasing_income
 
-        # ── Costo de fondo (sobre cartera total) ─────────────────────────────
-        total_portfolio = factoring_portfolio + leasing_portfolio_mm
-        funding_cost    = total_portfolio * (funding_rate_pct / 100.0)
+        # ── Costo de fondo (proporcional a cartera + componente fijo) ────────
+        total_portfolio    = factoring_portfolio + leasing_portfolio_mm
+        base_funding_fixed = params.get_param_at_month("base_funding_cost", m)
+        funding_cost       = total_portfolio * (funding_rate_pct / 100.0) + base_funding_fixed
 
         # ── Margen financiero bruto ───────────────────────────────────────────
         financial_margin = total_income - funding_cost

@@ -384,7 +384,7 @@ with st.sidebar:
 
     initial_portfolio = st.number_input(
         "Cartera inicial (M$)",
-        min_value=0.0, value=_dv("initial_portfolio", 5018.0), step=100.0,
+        min_value=0.0, value=_dv("initial_portfolio", 4560.0), step=100.0,
         help="Stock factoring inicial en millones de pesos CLP",
         key="nb_portfolio",
     )
@@ -396,12 +396,12 @@ with st.sidebar:
     )
     current_remuneration = st.number_input(
         "Remuneraciones base (M$/mes)",
-        min_value=0.0, value=_dv("current_remuneration", 57.0), step=1.0,
+        min_value=0.0, value=_dv("current_remuneration", 59.8), step=1.0,
         key="nb_rem",
     )
     other_expenses = st.number_input(
         "Otros gastos no op. (M$/mes)",
-        min_value=0.0, value=_dv("other_expenses", 11.0), step=1.0,
+        min_value=0.0, value=_dv("other_expenses", 13.8), step=1.0,
         help="Otros costos no operacionales (promedio mensual EERR)",
         key="nb_other",
     )
@@ -503,15 +503,23 @@ with st.sidebar:
             key="nb_fund",
         )
 
+    base_funding_cost_mm = st.number_input(
+        "Costo fijo de fondo (M$/mes)",
+        min_value=0.0, value=_dv("base_funding_cost_mm", 9.93), step=0.5, format="%.2f",
+        help="Overhead fijo de financiamiento no proporcional a la cartera (e.g. línea de crédito base, comisiones fijas). "
+             "Calibrado en EERR May-2026: diferencia entre costo observado y 0.44% × cartera.",
+        key="nb_base_fund",
+    )
+
     spread = placement_rate - funding_cost_rate
-    st.caption(f"Spread neto factoring: **{spread:.2f}%** mensual · costo fondo sobre cartera total")
+    st.caption(f"Spread neto factoring: **{spread:.2f}%** mensual · costo fondo variable sobre cartera total")
 
     # ── Leasing ─────────────────────────────────────────────────────────────
     st.markdown('<p class="sb-section">🏗️ Leasing (UF + IPC)</p>', unsafe_allow_html=True)
 
     leasing_portfolio_uf = st.number_input(
         "Stock inicial leasing (UF)",
-        min_value=0.0, value=_dv("leasing_portfolio_uf", 69354.96), step=1000.0,
+        min_value=0.0, value=_dv("leasing_portfolio_uf", 92295.0), step=1000.0,
         format="%.2f", key="nb_leas_uf",
     )
     uf_value = st.number_input(
@@ -862,6 +870,7 @@ params = ProjectionParams(
     uf_value=uf_value,
     monthly_ipc=monthly_ipc,
     funding_cost_rate=funding_cost_rate,
+    base_funding_cost_mm=base_funding_cost_mm,
     current_op_costs=current_op_costs,
     current_remuneration=current_remuneration,
     other_expenses=other_expenses,
