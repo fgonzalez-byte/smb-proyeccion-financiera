@@ -567,9 +567,7 @@ def export_to_pptx(df_monthly: pd.DataFrame, params: ProjectionParams,   # noqa:
         ("IPC Proyectado (reaj. UF)",  f"{params.monthly_ipc:.2f}%/mes", None),
         ("IPC anual equivalente",      f"{((1+params.monthly_ipc/100)**12-1)*100:.1f}%/año", None),
         ("Plazo Prom. Leasing",        f"{params.leasing_avg_term_months} meses", None),
-    ] + ([("Impuesto Renta",  f"{params.tax_rate:.0f}%", None)]
-         if params.apply_tax else
-         [("Impuesto Renta",  "DESHABILITADO", C_GRAY)])
+    ] + ([("Impuesto Renta",  f"{params.tax_rate:.0f}%", None)] if params.apply_tax else [])
     for i, (lbl, val, vc) in enumerate(rows1):
         cy = item_row(s2, p1x, cy, CW, lbl, val, val_color=vc, alt=(i % 2 == 0))
 
