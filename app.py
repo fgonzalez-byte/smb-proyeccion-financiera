@@ -158,6 +158,14 @@ if "active_scenario" not in st.session_state:
 if "_imported_data" not in st.session_state:
     st.session_state._imported_data: dict = {}
 
+# Patrón "pending": aplicar valores de escenario ANTES de renderizar widgets.
+# Streamlit prohíbe modificar st.session_state[widget_key] después de renderizar
+# el widget. Por eso guardamos en _pending_* y los consumimos aquí al inicio.
+for _pk, _wk in [("_pending_apply_tax", "toggle_apply_tax"),
+                  ("_pending_tax_rate",  "nb_tax")]:
+    if _pk in st.session_state:
+        st.session_state[_wk] = st.session_state.pop(_pk)
+
 # Auto-cargar balance al inicio si aún no se ha importado y el archivo existe
 if not st.session_state._imported_data and os.path.exists(EXCEL_FILE):
     try:
@@ -861,8 +869,8 @@ with st.sidebar:
                          "value": o.value, "note": o.note, "is_delta": o.is_delta}
                         for o in loaded.overrides
                     ]
-                    st.session_state["toggle_apply_tax"] = loaded.apply_tax
-                    st.session_state["nb_tax"] = loaded.tax_rate
+                    st.session_state["_pending_apply_tax"] = loaded.apply_tax
+                    st.session_state["_pending_tax_rate"]  = loaded.tax_rate
                     st.session_state.active_scenario = sc_load_sel
                     st.success(f"Cargado: {sc_load_sel}")
                     st.rerun()
@@ -1295,8 +1303,8 @@ with tab_scenarios:
                              "value": o.value, "note": o.note, "is_delta": o.is_delta}
                             for o in loaded.overrides
                         ]
-                        st.session_state["toggle_apply_tax"] = loaded.apply_tax
-                        st.session_state["nb_tax"] = loaded.tax_rate
+                        st.session_state["_pending_apply_tax"] = loaded.apply_tax
+                        st.session_state["_pending_tax_rate"]  = loaded.tax_rate
                         st.session_state.active_scenario = sc
                         st.rerun()
             with col_del:
