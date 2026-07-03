@@ -217,7 +217,7 @@ def _param_bar(p, df_m) -> str:
         _chip("Remuner.",       f"M${p.current_remuneration:,.0f}"),
         _chip("Costos Op.",     f"M${p.current_op_costs:,.0f}"),
         _chip("Prov. anual",    f"{p.provision_rate:.1f}%"),
-        _chip("Imp. renta",     f"{p.tax_rate:.0f}%"),
+        _chip("Imp. renta",     f"{p.tax_rate:.0f}%" if p.apply_tax else "Deshabilitado"),
         _chip("Res. Mes 1",  f"M${m1:+,.1f}",  "#F47920" if m1  >= 0 else "#EF4444"),
         _chip("Res. Mes 72", f"M${m72:+,.1f}", "#F47920" if m72 >= 0 else "#EF4444"),
     ])
@@ -598,10 +598,17 @@ with st.sidebar:
         key="nb_equity",
         help="Capital propio de la empresa al inicio de la proyección",
     )
+    apply_tax = st.toggle(
+        "Impuesto a la Renta",
+        value=_dv("apply_tax", True),
+        key="toggle_apply_tax",
+        help="Si está desactivado, el impuesto = $0 y no aparece en Excel ni PowerPoint",
+    )
     tax_rate = st.number_input(
-        "Impuesto renta (%)",
+        "Tasa impuesto renta (%)",
         min_value=0.0, max_value=40.0, value=27.0, step=1.0, format="%.0f",
         key="nb_tax",
+        disabled=not apply_tax,
         help="Tasa de impuesto corporativo Chile: 27%",
     )
     st.caption(
@@ -854,6 +861,8 @@ with st.sidebar:
                          "value": o.value, "note": o.note, "is_delta": o.is_delta}
                         for o in loaded.overrides
                     ]
+                    st.session_state["toggle_apply_tax"] = loaded.apply_tax
+                    st.session_state["nb_tax"] = loaded.tax_rate
                     st.session_state.active_scenario = sc_load_sel
                     st.success(f"Cargado: {sc_load_sel}")
                     st.rerun()
@@ -883,6 +892,7 @@ params = ProjectionParams(
     npl_rate=npl_rate,
     initial_equity=initial_equity,
     tax_rate=tax_rate,
+    apply_tax=apply_tax,
     overrides=[Override(**{k: v for k, v in ov.items() if k in Override.__dataclass_fields__}) for ov in st.session_state.overrides],
 )
 
@@ -1282,9 +1292,11 @@ with tab_scenarios:
                     if loaded:
                         st.session_state.overrides = [
                             {"param": o.param, "from_month": o.from_month,
-                             "value": o.value, "note": o.note}
+                             "value": o.value, "note": o.note, "is_delta": o.is_delta}
                             for o in loaded.overrides
                         ]
+                        st.session_state["toggle_apply_tax"] = loaded.apply_tax
+                        st.session_state["nb_tax"] = loaded.tax_rate
                         st.session_state.active_scenario = sc
                         st.rerun()
             with col_del:

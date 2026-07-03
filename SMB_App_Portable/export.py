@@ -157,6 +157,8 @@ def export_to_excel(df_monthly: pd.DataFrame, params: ProjectionParams) -> bytes
         ("Incremento Anual Op.",         f"${params.annual_op_increment:,.1f}M/año"),
         ("Otros Gastos",                 f"${params.other_expenses:,.1f}M/mes"),
     ]
+    if params.apply_tax:
+        param_rows.append(("Impuesto a la Renta", f"{params.tax_rate:.0f}%"))
     if params.overrides:
         param_rows.append(("Modificaciones Programadas", f"{len(params.overrides)} override(s)"))
 
@@ -565,8 +567,9 @@ def export_to_pptx(df_monthly: pd.DataFrame, params: ProjectionParams,   # noqa:
         ("IPC Proyectado (reaj. UF)",  f"{params.monthly_ipc:.2f}%/mes", None),
         ("IPC anual equivalente",      f"{((1+params.monthly_ipc/100)**12-1)*100:.1f}%/año", None),
         ("Plazo Prom. Leasing",        f"{params.leasing_avg_term_months} meses", None),
-        ("Impuesto Renta",             f"{params.tax_rate:.0f}%", None),
-    ]
+    ] + ([("Impuesto Renta",  f"{params.tax_rate:.0f}%", None)]
+         if params.apply_tax else
+         [("Impuesto Renta",  "DESHABILITADO", C_GRAY)])
     for i, (lbl, val, vc) in enumerate(rows1):
         cy = item_row(s2, p1x, cy, CW, lbl, val, val_color=vc, alt=(i % 2 == 0))
 
@@ -723,8 +726,12 @@ def export_to_pptx(df_monthly: pd.DataFrame, params: ProjectionParams,   # noqa:
          "Ingresos − Costo de Fondo",      True, 2, 2),
         ("Total Costos Año 6",         f"M${abs(df_annual.iloc[-1]['Total_costos']):,.0f}",
          "Op. + Rem. + Otros",             True, 2, 3),
-        ("Impuesto Pagado (6 años)",   f"M${df_monthly['Impuesto'].sum():,.0f}",
-         "27% sobre resultado positivo",   True, 2, 4),
+        # KPI impuesto: mostrar solo si está habilitado; si no, mostrar Resultado Año 6
+        *([(f"Impuesto Pagado (6 años)", f"M${df_monthly['Impuesto'].sum():,.0f}",
+            f"{params.tax_rate:.0f}% sobre resultado positivo", True, 2, 4)]
+          if params.apply_tax else
+          [("Resultado Neto Año 6", f"M${df_annual.iloc[-1]['Resultado_neto']:,.0f}",
+            "Sin impuesto a la renta", df_annual.iloc[-1]["Resultado_neto"] >= 0, 2, 4)]),
     ]
 
     KT_map = {0: KT1, 1: KT2, 2: KT3}
